@@ -7,7 +7,7 @@ from modules.labeler import label_trade
 conn = sqlite3.connect("signals.db")
 cursor = conn.cursor()
 
-# ✅ FIXED: Correct field name is id, not signal_id
+# Get all signals
 cursor.execute("SELECT id, ticker, timestamp, entry_price FROM signals")
 rows = cursor.fetchall()
 
@@ -18,6 +18,13 @@ for row in rows:
     if "error" in result:
         print(f"❌ Error for {ticker}: {result['error']}")
         continue
+
+    outcome_class = (
+        1 if result.get("label_5p_win_d5") else
+        2 if result.get("label_2p_loss_d5") else
+        0
+    )
+    result["outcome_class"] = outcome_class
 
     # Build dynamic insert
     cols = ", ".join(result.keys())
@@ -32,8 +39,7 @@ for row in rows:
         )
     """, [signal_id] + values)
 
-    print(f"✅ Signal {signal_id} labeled.")
-
+    print(f"✅ Signal {signal_id} labeled as {outcome_class}.")
 
 conn.commit()
 conn.close()
