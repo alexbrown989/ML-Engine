@@ -1,5 +1,7 @@
-# Connect to DB
 import sqlite3
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from modules.labeler import label_trade
 
 conn = sqlite3.connect("signals.db")
