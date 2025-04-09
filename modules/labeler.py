@@ -26,9 +26,9 @@ def label_trade(ticker, timestamp, entry_price):
                 sub_ret = returns[:d]
                 max_ret = sub_ret.max()
                 min_ret = sub_ret.min()  
-             if isinstance(max_ret, pd.Series):
+            if isinstance(max_ret, pd.Series):
                 max_ret = max_ret.iloc[0]
-             if isinstance(min_ret, pd.Series):
+            if isinstance(min_ret, pd.Series):
                 min_ret = min_ret.iloc[0]  
 
                 labels[f'label_3p_win_d{d}'] = int(float(max_ret) >= 0.03)
