@@ -14,7 +14,10 @@ df = pd.read_sql_query("SELECT * FROM features", conn)
 conn.close()
 
 # Drop any rows with missing outcome_class
+
 df = df[df['outcome_class'].notna()]
+df['outcome_class'] = df['outcome_class'].astype(int)  # ← Fix goes here
+
 
 # 🧠 Optional: Print label counts
 print("✅ Outcome class breakdown:")
