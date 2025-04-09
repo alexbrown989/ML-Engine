@@ -11,9 +11,7 @@ def train_model():
     conn.close()
 
     df = df[df["outcome_class"].notna()]
-
-    # ✅ Cast and reindex to [0, 1] instead of [1, 2]
-    df["outcome_class"] = df["outcome_class"].astype(int) - 1
+    df["outcome_class"] = df["outcome_class"].astype(int)
 
     print("✅ Raw outcome_class counts:")
     print(df["outcome_class"].value_counts(), "\n")
@@ -36,7 +34,7 @@ def train_model():
         X = pd.get_dummies(X, columns=["regime"])
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, shuffle=False
+        X, y, test_size=0.2, stratify=y, random_state=42
     )
 
     print("\n📊 y_train distribution:")
@@ -46,8 +44,10 @@ def train_model():
     print(y_test.value_counts())
 
     model = XGBClassifier(
-        use_label_encoder=False,
-        eval_metric="logloss"
+        objective="multi:softmax",
+        num_class=3,
+        eval_metric="mlogloss",
+        use_label_encoder=False
     )
     model.fit(X_train, y_train)
 
@@ -63,3 +63,4 @@ def train_model():
 
 if __name__ == "__main__":
     train_model()
+
