@@ -1,125 +1,122 @@
+# database/inference.py
+
 import sqlite3
 import pandas as pd
 import pickle
-import numpy as np
-import os
 from datetime import datetime
 
-def prepare_features(signal_rows):
-    print(f"🔍 Preparing features for {len(signal_rows)} signals...")
-    df = pd.DataFrame(signal_rows, columns=[
-        "signal_id", "vix", "vvix", "skew", "rsi", "regime", "checklist_score"
-    ])
+def load_model(path="model_xgb.pkl"):
+    with open(path, "rb") as f:
+        return pickle.load(f)
 
-    # Show raw incoming data
-    print("🧾 First few raw signals:\n", df.head())
-
-    df["vvs_adj"] = (df["vix"] + df["vvix"]) / df["skew"]
-    df["vvs_roc_5d"] = np.nan  # Placeholder
-
-    df = pd.get_dummies(df, columns=["regime"])
-
-    df = df.set_index("signal_id")
-
-    print("🧠 Feature DataFrame preview:\n", df.head())
-    print("🧠 Feature columns:", df.columns.tolist())
+def get_unlabeled_signals():
+    conn = sqlite3.connect("signals.db")
+    query = """
+        SELECT id, vix, vvix, skew, rsi, regime, checklist_score
+        FROM signals
+        WHERE id NOT IN (SELECT signal_id FROM predictions)
+    """
+    df = pd.read_sql_query(query, conn)
+    conn.close()
     return df
 
-def map_prediction(pred, conf):
-    return {
-        "prediction": int(pred),
-        "confidence": round(float(conf), 2),
-        "entry_readiness": (
-            "HIGH" if conf > 0.85 else
-            "MEDIUM" if conf > 0.70 else
-            "LOW"
-        ),
-        "suggested_action": "ENTER" if conf > 0.70 else "WAIT"
-    }
+def build_features(df_raw):
+    df = df_raw.copy()
+    df["vvs_adj"] = (df["vix"] + df["vvix"]) / df["skew"]
+    df["vvs_roc_5d"] = None  # placeholder
+    df["chop_flag"] = 0  # fallback default
 
-def run_inference():
-    print("🚀 Starting inference at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    df = pd.get_dummies(df, columns=["regime"], prefix="regime")
+    for col in ["regime_calm", "regime_panic", "regime_transition"]:
+        if col not in df:
+            df[col] = False
+    df.set_index("id", inplace=True)
+    return df
 
-    if not os.path.exists("model_xgb.pkl"):
-        print("❌ Model not found. Run train_model.py first.")
-        return
+def map_confidence(prob):
+    if prob >= 0.90:
+        return "HIGH", "ENTER"
+    elif prob >= 0.70:
+        return "MEDIUM", "ENTER"
+    else:
+        return "LOW", "WAIT"
 
-    with open("model_xgb.pkl", "rb") as f:
-        model = pickle.load(f)
-
+def store_predictions(results):
     conn = sqlite3.connect("signals.db")
     cursor = conn.cursor()
-
-    # Create predictions table if needed
-    cursor.execute("""
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS predictions (
             signal_id INTEGER PRIMARY KEY,
             prediction INTEGER,
             confidence REAL,
-            entry_readiness TEXT,
+            confidence_band TEXT,
             suggested_action TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp TEXT
         )
-    """)
-
-    # Get signals that haven't been scored yet
-    cursor.execute("""
-        SELECT s.id, s.vix, s.vvix, s.skew, s.rsi, s.regime, s.checklist_score
-        FROM signals s
-        LEFT JOIN predictions p ON s.id = p.signal_id
-        WHERE p.signal_id IS NULL
-    """)
-    rows = cursor.fetchall()
-
-    if not rows:
-        print("ℹ️ No new signals to score.")
-        conn.close()
-        return
-
-    print(f"📥 Fetched {len(rows)} new signals to score.")
-
-    # Prepare matching feature set
-    features_df = prepare_features(rows)
-
-    model_features = model.get_booster().feature_names
-    print("🔎 Model expects features:", model_features)
-
-    for col in model_features:
-        if col not in features_df.columns:
-            print(f"⚠️ Missing feature '{col}' — filling with 0")
-            features_df[col] = 0
-
-    features_df = features_df[model_features]
-    features_df = features_df.fillna(0)
-
-    print("✅ Final feature matrix shape:", features_df.shape)
-
-    proba = model.predict_proba(features_df)
-    preds = np.argmax(proba, axis=1)
-    confidences = np.max(proba, axis=1)
-
-    print("\n📊 Sample prediction probabilities:")
-    for i, row in enumerate(proba[:3]):
-        print(f"  Signal {features_df.index[i]}: {row} (pred={preds[i]}, conf={confidences[i]:.2f})")
-
-    # Insert results
-    for signal_id, pred, conf in zip(features_df.index, preds, confidences):
-        result = map_prediction(pred, conf)
-        cursor.execute("""
-            INSERT OR REPLACE INTO predictions (
-                signal_id, prediction, confidence, entry_readiness, suggested_action
-            ) VALUES (?, ?, ?, ?, ?)
-        """, (
-            signal_id,
-            result["prediction"],
-            result["confidence"],
-            result["entry_readiness"],
-            result["suggested_action"]
+    ''')
+    for res in results:
+        cursor.execute('''
+            INSERT OR REPLACE INTO predictions
+            (signal_id, prediction, confidence, confidence_band, suggested_action, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            res["signal_id"], res["prediction"], res["confidence"],
+            res["confidence_band"], res["suggested_action"], res["timestamp"]
         ))
-        print(f"✅ Stored: signal_id={signal_id}, pred={result['prediction']}, conf={result['confidence']} ({result['entry_readiness']})")
-
+        print(f"✅ Stored: signal_id={res['signal_id']}, pred={res['prediction']}, conf={res['confidence']:.2f} ({res['confidence_band']})")
     conn.commit()
     conn.close()
+
+def run_inference():
+    print(f"🚀 Starting inference at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    df_raw = get_unlabeled_signals()
+    print(f"\n📥 Fetched {len(df_raw)} new signals to score.")
+    if df_raw.empty:
+        print("❌ No new signals to score. Exiting.")
+        return
+
+    print(f"🔍 Preparing features for {len(df_raw)} signals...")
+    print("🧾 First few raw signals:")
+    print(df_raw.head())
+
+    features = build_features(df_raw)
+    print("🧠 Feature DataFrame preview:")
+    print(features.head())
+    print("🧠 Feature columns:", list(features.columns))
+
+    model = load_model()
+    expected_cols = model.get_booster().feature_names
+    print("🔎 Model expects features:", expected_cols)
+
+    for col in expected_cols:
+        if col not in features:
+            print(f"⚠️ Missing feature '{col}' — filling with 0")
+            features[col] = 0
+
+    features = features[expected_cols]
+    print("✅ Final feature matrix shape:", features.shape)
+
+    probs = model.predict_proba(features)
+    results = []
+
+    print("\n📊 Sample prediction probabilities:")
+    for i, (signal_id, prob) in enumerate(zip(features.index, probs)):
+        pred = int(prob.argmax())
+        confidence = float(prob[pred])
+        band, action = map_confidence(confidence)
+        print(f"  Signal {signal_id}: {prob} (pred={pred}, conf={confidence:.2f})")
+
+        results.append({
+            "signal_id": signal_id,
+            "prediction": pred,
+            "confidence": round(confidence, 2),
+            "confidence_band": band,
+            "suggested_action": action,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+
+    store_predictions(results)
     print("✅ Inference complete and all results stored.")
 
 if __name__ == "__main__":
