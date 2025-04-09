@@ -1,6 +1,7 @@
 import sqlite3
 import sys
 import os
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from modules.labeler import label_trade
 
@@ -13,7 +14,7 @@ rows = cursor.fetchall()
 for row in rows:
     signal_id, ticker, timestamp, entry_price = row
 
-    # Delete old labels for clean replace
+    # Clean up any existing labels for this signal
     cursor.execute("DELETE FROM labels WHERE signal_id = ?", (signal_id,))
 
     result = label_trade(ticker, timestamp, entry_price)
@@ -27,15 +28,18 @@ for row in rows:
         print(f"⚠️ Missing expected label keys for signal {signal_id}: {result}")
         continue
 
-    # Assign outcome class
-    outcome_class = (
-        1 if result["label_5p_win_d5"] else
-        2 if result["label_2p_loss_d5"] else
-        0
-    )
+    # Define class: 1 = win, 2 = loss, 0 = chop/neutral
+    if result["label_5p_win_d5"] and result["label_2p_loss_d5"]:
+        outcome_class = 0  # conflicting = chop
+    elif result["label_5p_win_d5"]:
+        outcome_class = 1
+    elif result["label_2p_loss_d5"]:
+        outcome_class = 2
+    else:
+        outcome_class = 0
+
     result["outcome_class"] = outcome_class
 
-    # Build dynamic insert
     cols = ", ".join(result.keys())
     placeholders = ", ".join(["?"] * len(result))
     values = list(result.values())
