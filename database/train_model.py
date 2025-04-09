@@ -12,7 +12,7 @@ def train_model():
     conn.close()
 
     df = df[df["outcome_class"].notna()]
-    df["outcome_class"] = df["outcome_class"].astype(int)
+    df["outcome_class"] = df["outcome_class"].astype(int) - 1
 
     print("✅ Raw outcome_class counts:")
     print(df["outcome_class"].value_counts(), "\n")
