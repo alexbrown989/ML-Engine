@@ -1,12 +1,16 @@
 import sqlite3
 
 def init_db():
-    conn = sqlite3.connect("trades.db")
+    conn = sqlite3.connect("signals.db")  # change name if needed
     cursor = conn.cursor()
 
-    # Table: signals
+    # 🧹 Clean slate
+    cursor.execute("DROP TABLE IF EXISTS signals;")
+    cursor.execute("DROP TABLE IF EXISTS labels;")
+
+    # 🧠 Create signals table
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS signals (
+        CREATE TABLE signals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT,
             ticker TEXT,
@@ -20,14 +24,26 @@ def init_db():
         )
     ''')
 
-    # Table: labels (expanded)
+    # 🧠 Create labels table (merged with multi-horizon + original features)
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS labels (
+        CREATE TABLE labels (
             signal_id INTEGER,
-            label_3p_win INTEGER,
-            label_5p_win INTEGER,
-            label_10p_win INTEGER,
-            label_2p_loss INTEGER,
+            label_3p_win_d3 INTEGER,
+            label_5p_win_d3 INTEGER,
+            label_10p_win_d3 INTEGER,
+            label_2p_loss_d3 INTEGER,
+            label_3p_win_d5 INTEGER,
+            label_5p_win_d5 INTEGER,
+            label_10p_win_d5 INTEGER,
+            label_2p_loss_d5 INTEGER,
+            label_3p_win_d7 INTEGER,
+            label_5p_win_d7 INTEGER,
+            label_10p_win_d7 INTEGER,
+            label_2p_loss_d7 INTEGER,
+            label_3p_win_d10 INTEGER,
+            label_5p_win_d10 INTEGER,
+            label_10p_win_d10 INTEGER,
+            label_2p_loss_d10 INTEGER,
             chop_flag INTEGER,
             max_gain_pct REAL,
             max_drawdown_pct REAL,
@@ -46,7 +62,8 @@ def init_db():
 
     conn.commit()
     conn.close()
-    print("✅ SQLite DB initialized.")
+    print("✅ signals.db schema reset and created.")
 
+# CLI usage
 if __name__ == "__main__":
     init_db()
