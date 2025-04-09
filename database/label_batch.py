@@ -1,16 +1,14 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import sqlite3
 from modules.labeler import label_trade
 
 # Connect to the database
-conn = sqlite3.connect("signals.db")
+conn = sqlite3.connect("trades.db")  # Make sure you're using the correct DB name
 cursor = conn.cursor()
 
-# Step 1: Fetch all rows from signals table
-cursor.execute("SELECT signal_id, ticker, timestamp, entry_price FROM signals")
+# Step 1: Fetch all rows from the signals table
+cursor.execute("SELECT id, ticker, timestamp, entry_price FROM signals")
 rows = cursor.fetchall()
 
 for signal_id, ticker, timestamp, entry_price in rows:
@@ -22,7 +20,7 @@ for signal_id, ticker, timestamp, entry_price in rows:
         print(f"❌ Error for {ticker}: {result['error']}")
         continue
 
-    # Build dynamic insert based on result keys
+    # Insert into labels table with dynamic column build
     cols = ", ".join(result.keys())
     placeholders = ", ".join(["?"] * len(result))
     values = list(result.values())
@@ -40,5 +38,3 @@ for signal_id, ticker, timestamp, entry_price in rows:
 conn.commit()
 conn.close()
 print("✅ All signals labeled and stored.")
-
-
