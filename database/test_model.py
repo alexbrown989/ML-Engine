@@ -41,6 +41,9 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle
 # Predict
 y_pred = model.predict(X_test)
 
+# 🧠 Fix: Convert from softprob to class
+import numpy as np
+y_pred = np.argmax(y_pred, axis=1)
 
 # Evaluation
 print("✅ Prediction (first sample):", y_pred[0])
