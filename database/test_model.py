@@ -23,9 +23,12 @@ print(df['outcome_class'].value_counts(), "\n")
 # Preprocessing — one-hot encode regime (since it's categorical)
 df_encoded = pd.get_dummies(df, columns=["regime"])
 
-# Separate features (X) and target (y)
-X = X[[col for col in X.columns if col in model.feature_names_in_]]
+# Split into X and y
 y = df_encoded["outcome_class"]
+X = df_encoded.drop(columns=["signal_id", "outcome_class"])
+
+# Align columns with what model expects
+X = X[[col for col in X.columns if col in model.feature_names_in_]]
 
 # Train/test split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
@@ -39,3 +42,4 @@ print("📊 Actual:", int(y_test.iloc[0]))
 print("\n🧾 Classification Report:")
 print(classification_report(y_test, y_pred))
 print("🎯 Accuracy:", round(accuracy_score(y_test, y_pred) * 100, 2), "%")
+
