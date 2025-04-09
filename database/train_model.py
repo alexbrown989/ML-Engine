@@ -29,6 +29,9 @@ def train_model():
     # Step 6: Train/test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
+
+    print(f"📦 Total training samples: {len(df)}")
+
     )
 
     # Step 7: Train model
