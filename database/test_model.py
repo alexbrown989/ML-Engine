@@ -24,7 +24,7 @@ print(df['outcome_class'].value_counts(), "\n")
 df_encoded = pd.get_dummies(df, columns=["regime"])
 
 # Separate features (X) and target (y)
-X = df_encoded.drop(["signal_id", "outcome_class"], axis=1)
+X = df_encoded.drop(["signal_id", "outcome_class"], axis=1).apply(pd.to_numeric, errors='coerce').fillna(0)
 y = df_encoded["outcome_class"]
 
 # Train/test split
