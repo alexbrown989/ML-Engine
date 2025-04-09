@@ -1,4 +1,6 @@
 # Connect to DB
+import sqlite3
+
 conn = sqlite3.connect("signals.db")
 cursor = conn.cursor()
 
