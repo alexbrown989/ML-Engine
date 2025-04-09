@@ -1,49 +1,37 @@
-from modules.labeler import label_trade
 import sqlite3
+from modules.labeler import label_trade
 
-# Connect to DB
+# Connect to the database
 conn = sqlite3.connect("signals.db")
 cursor = conn.cursor()
 
-# Fetch signals to label
+# Step 1: Fetch all rows from signals table
 cursor.execute("SELECT signal_id, ticker, timestamp, entry_price FROM signals")
 rows = cursor.fetchall()
 
-for row in rows:
-    signal_id, ticker, timestamp, entry_price = row
-    result = label_trade(ticker, timestamp, entry_price)
+for signal_id, ticker, timestamp, entry_price in rows:
+    print(f"🔍 Labeling {ticker} from {timestamp}...")
 
+    result = label_trade(ticker, timestamp, entry_price)
+    
     if "error" in result:
-        print(f"❌ Signal {signal_id} failed: {result['error']}")
+        print(f"❌ Error for {ticker}: {result['error']}")
         continue
 
-    cursor.execute("""
+    # Optional: Dynamically build column insert string
+    cols = ", ".join(result.keys())
+    placeholders = ", ".join(["?"] * len(result))
+    values = list(result.values())
+
+    # Add signal_id as part of insert
+    cursor.execute(f"""
         INSERT OR REPLACE INTO labels (
-            signal_id,
-            label_3p_win, label_5p_win, label_10p_win,
-            label_2p_loss, chop_flag,
-            max_gain_pct, max_drawdown_pct,
-            label_reason
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        signal_id,
-        result['label_3p_win'],
-        result['label_5p_win'],
-        result['label_10p_win'],
-        result['label_2p_loss'],
-        result['chop_flag'],
-        float(result['max_gain_pct']),
-        float(result['max_drawdown_pct']),
-        result['label_reason']
-    ))
-
-    print(f"✅ Signal {signal_id} labeled.")
+            signal_id, {cols}
+        ) VALUES (
+            ?, {placeholders}
+        )
+    """, [signal_id] + values)
 
 conn.commit()
 conn.close()
-print("✅ All signals labeled and saved.")
-
-
-conn.commit()
-conn.close()
-print("✅ All signals labeled and saved.")
+print("✅ All signals labeled and stored.")
