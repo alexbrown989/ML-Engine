@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 import joblib
+from sklearn.metrics import classification_report
 
 def train_model():
     conn = sqlite3.connect("signals.db")
