@@ -1,5 +1,6 @@
 # Connect to DB
 import sqlite3
+from modules.labeler import label_trade
 
 conn = sqlite3.connect("signals.db")
 cursor = conn.cursor()
