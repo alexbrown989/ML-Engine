@@ -6,13 +6,14 @@ from xgboost import XGBClassifier
 import pickle
 
 def train_model():
-    # Load data
     conn = sqlite3.connect("signals.db")
     df = pd.read_sql_query("SELECT * FROM features", conn)
     conn.close()
 
     df = df[df["outcome_class"].notna()]
-    df["outcome_class"] = df["outcome_class"].astype(int)  # Already 0, 1, 2
+
+    # ✅ Cast and reindex to [0, 1] instead of [1, 2]
+    df["outcome_class"] = df["outcome_class"].astype(int) - 1
 
     print("✅ Raw outcome_class counts:")
     print(df["outcome_class"].value_counts(), "\n")
@@ -28,33 +29,28 @@ def train_model():
         print("❌ No data left to train on after filtering. Exiting.")
         return
 
-    # Features and labels
     y = df["outcome_class"]
     X = df.drop(columns=["signal_id", "outcome_class"])
 
     if "regime" in X.columns:
         X = pd.get_dummies(X, columns=["regime"])
 
-    # Split with stratification
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X, y, test_size=0.2, shuffle=False
     )
 
     print("\n📊 y_train distribution:")
     print(y_train.value_counts())
+
     print("\n📊 y_test distribution:")
     print(y_test.value_counts())
 
-    # Train model
     model = XGBClassifier(
         use_label_encoder=False,
-        eval_metric="mlogloss",
-        objective="multi:softmax",
-        num_class=3
+        eval_metric="logloss"
     )
     model.fit(X_train, y_train)
 
-    # Evaluate
     y_pred = model.predict(X_test)
 
     print("\n🧪 Evaluation:")
@@ -67,4 +63,3 @@ def train_model():
 
 if __name__ == "__main__":
     train_model()
-
