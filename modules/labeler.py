@@ -24,10 +24,10 @@ def label_trade(ticker, timestamp, entry_price):
         for d in lookahead_days:
             if len(returns) >= d:
                 sub_ret = returns[:d]
-                labels[f'label_3p_win_d{d}'] = int(float(sub_ret.max()) >= 0.03)
-                labels[f'label_5p_win_d{d}'] = int(float(sub_ret.max()) >= 0.05)
-                labels[f'label_10p_win_d{d}'] = int(float(sub_ret.max()) >= 0.10)
-                labels[f'label_2p_loss_d{d}'] = int(float(sub_ret.min()) <= -0.02)
+                labels[f'label_3p_win_d{d}'] = int(sub_ret.max().item() >= 0.03)
+                labels[f'label_5p_win_d{d}'] = int(sub_ret.max().item() >= 0.05)
+                labels[f'label_10p_win_d{d}'] = int(sub_ret.max().item() >= 0.10)
+                labels[f'label_2p_loss_d{d}'] = int(sub_ret.min().item() <= -0.02) # This line appears twice in your snippet
 
         # Chop detection
         chop_flag = max_gain < 0.015 and max_loss > -0.015
