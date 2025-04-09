@@ -5,6 +5,11 @@ from xgboost import XGBClassifier
 import joblib
 from sklearn.metrics import classification_report
 
+# After training
+y_pred = model.predict(X_test)
+print("🔍 Model Evaluation:")
+print(classification_report(y_test, y_pred))
+
 def train_model():
     conn = sqlite3.connect("signals.db")
     df = pd.read_sql_query("""
