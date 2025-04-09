@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import sqlite3
 from modules.labeler import label_trade
 
@@ -13,17 +17,16 @@ for signal_id, ticker, timestamp, entry_price in rows:
     print(f"🔍 Labeling {ticker} from {timestamp}...")
 
     result = label_trade(ticker, timestamp, entry_price)
-    
+
     if "error" in result:
         print(f"❌ Error for {ticker}: {result['error']}")
         continue
 
-    # Optional: Dynamically build column insert string
+    # Build dynamic insert based on result keys
     cols = ", ".join(result.keys())
     placeholders = ", ".join(["?"] * len(result))
     values = list(result.values())
 
-    # Add signal_id as part of insert
     cursor.execute(f"""
         INSERT OR REPLACE INTO labels (
             signal_id, {cols}
@@ -32,6 +35,10 @@ for signal_id, ticker, timestamp, entry_price in rows:
         )
     """, [signal_id] + values)
 
+    print(f"✅ Signal {signal_id} labeled.")
+
 conn.commit()
 conn.close()
 print("✅ All signals labeled and stored.")
+
+
