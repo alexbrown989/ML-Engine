@@ -1,28 +1,20 @@
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-import sqlite3
-from modules.labeler import label_trade
-
-# Connect to the database
-conn = sqlite3.connect("trades.db")  # Make sure you're using the correct DB name
+# Connect to DB
+conn = sqlite3.connect("signals.db")
 cursor = conn.cursor()
 
-# Step 1: Fetch all rows from the signals table
+# ✅ FIXED: Correct field name is id, not signal_id
 cursor.execute("SELECT id, ticker, timestamp, entry_price FROM signals")
 rows = cursor.fetchall()
 
-for signal_id, ticker, timestamp, entry_price in rows:
-    print(f"🔍 Labeling {ticker} from {timestamp}...")
-
+for row in rows:
+    signal_id, ticker, timestamp, entry_price = row
     result = label_trade(ticker, timestamp, entry_price)
 
     if "error" in result:
         print(f"❌ Error for {ticker}: {result['error']}")
         continue
 
-    # Insert into labels table with dynamic column build
+    # Build dynamic insert
     cols = ", ".join(result.keys())
     placeholders = ", ".join(["?"] * len(result))
     values = list(result.values())
@@ -36,6 +28,7 @@ for signal_id, ticker, timestamp, entry_price in rows:
     """, [signal_id] + values)
 
     print(f"✅ Signal {signal_id} labeled.")
+
 
 conn.commit()
 conn.close()
