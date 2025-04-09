@@ -29,11 +29,8 @@ def train_model():
     # Step 6: Train/test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
-
-    print(f"📦 Total training samples: {len(df)}")
-
     )
-
+    
     # Step 7: Train model
     model = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
     model.fit(X_train, y_train)
@@ -47,6 +44,8 @@ def train_model():
     with open("model_xgb.pkl", "wb") as f:
         pickle.dump(model, f)
     print("✅ Model trained and saved as model_xgb.pkl")
+
+    print(f"📦 Total training samples: {len(df)}")
 
 if __name__ == "__main__":
     train_model()
