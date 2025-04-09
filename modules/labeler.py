@@ -30,12 +30,24 @@ def label_trade(ticker, timestamp, entry_price):
 
         chop_flag = max_gain < 0.015 and max_loss > -0.015
 
+        # 🎯 Outcome class assignment
+        # 1 = bullish success, 0 = loss, 2 = chop (optional)
+        if labels.get("label_5p_win_d5", 0) == 1:
+            outcome_class = 1
+        elif labels.get("label_2p_loss_d5", 0) == 1:
+            outcome_class = 0
+        elif chop_flag:
+            outcome_class = 2  # you can drop this line if you want to ignore chop for classification
+        else:
+            outcome_class = None
+
         return {
             **labels,
             "max_gain_pct": round(max_gain * 100, 2),
             "max_drawdown_pct": round(max_loss * 100, 2),
             "chop_flag": chop_flag,
-            "label_reason": f"High: {round(max_gain*100,2)}%, Low: {round(max_loss*100,2)}%"
+            "label_reason": f"High: {round(max_gain*100,2)}%, Low: {round(max_loss*100,2)}%",
+            "outcome_class": outcome_class
         }
 
     except Exception as e:
