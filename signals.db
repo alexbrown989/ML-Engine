@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS signals (
+    signal_id INTEGER PRIMARY KEY,
+    ticker TEXT,
+    timestamp TEXT,
+    entry_price REAL
+);
