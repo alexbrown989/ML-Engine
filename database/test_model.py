@@ -41,9 +41,10 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle
 # Predict
 y_pred = model.predict(X_test)
 
+
 # Evaluation
-print("✅ Prediction (first sample):", int(y_pred[0]))
-print("📊 Actual (first sample):", int(y_test.iloc[0]))
+print("✅ Prediction (first sample):", y_pred[0])
+print("📊 Actual (first sample):", y_test.iloc[0])
 print(f"\n🔢 Test Set Size: {len(y_test)} sample(s)")
 
 if len(y_test) >= 2:
@@ -52,4 +53,3 @@ if len(y_test) >= 2:
     print("🎯 Accuracy:", round(accuracy_score(y_test, y_pred) * 100, 2), "%")
 else:
     print("⚠️ Not enough data to generate a full classification report.")
-
