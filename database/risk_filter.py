@@ -1,68 +1,78 @@
-# database/risk_filter.py
-
 import sqlite3
 import pandas as pd
 from datetime import datetime
 
-def load_predictions(min_confidence=0.7):
+def apply_risk_filters():
+    print(f"\n🚦 Starting risk filter @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
     conn = sqlite3.connect("signals.db")
-    df = pd.read_sql_query('''
-        SELECT p.*, s.ticker, s.timestamp
-        FROM predictions p
-        JOIN signals s ON s.id = p.signal_id
-        WHERE p.confidence >= ?
-        ORDER BY p.timestamp DESC
-    ''', conn, params=(min_confidence,))
-    conn.close()
-    return df
+    preds = pd.read_sql_query("SELECT * FROM predictions ORDER BY timestamp DESC", conn)
 
-def apply_rules(df):
-    print("🔍 Running risk filters...")
-
-    df["risk_reason"] = ""
-    df["risk_pass"] = True
-
-    for idx, row in df.iterrows():
-        reasons = []
-
-        # Example filters
-        if row["confidence"] < 0.8:
-            reasons.append("Below 80% confidence")
-
-        if "tech" in row.get("ticker", "").lower():
-            reasons.append("Too many tech tickers")
-
-        if row["confidence_band"] == "LOW":
-            reasons.append("Low ML confidence")
-
-        if reasons:
-            df.at[idx, "risk_pass"] = False
-            df.at[idx, "risk_reason"] = ", ".join(reasons)
-
-    return df
-
-def run_filter():
-    print(f"⚙️ Running risk filter at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    df = load_predictions(min_confidence=0.7)
-
-    if df.empty:
-        print("❌ No predictions meet minimum confidence threshold.")
+    if preds.empty:
+        print("❌ No predictions found. Exiting.")
         return
 
-    df_filtered = apply_rules(df)
-    passed = df_filtered[df_filtered["risk_pass"]]
-    failed = df_filtered[~df_filtered["risk_pass"]]
+    print(f"📥 Loaded {len(preds)} predictions")
 
-    print(f"\n✅ {len(passed)} signals passed filter.")
-    print(f"❌ {len(failed)} signals filtered out.")
+    # Drop duplicates
+    preds = preds.drop_duplicates(subset=["signal_id"])
+    print(f"📎 Deduplicated to {len(preds)} signals")
 
-    if not passed.empty:
-        print("\n🚀 Approved Signals:")
-        print(passed[["signal_id", "ticker", "confidence", "confidence_band"]])
+    # JOIN for checklist scores from signals
+    signals = pd.read_sql_query("SELECT id, checklist_score FROM signals", conn)
+    signals.rename(columns={"id": "signal_id"}, inplace=True)
+    preds = preds.merge(signals, on="signal_id", how="left")
 
-    if not failed.empty:
-        print("\n⚠️ Rejected Signals and Reasons:")
-        print(failed[["signal_id", "confidence", "risk_reason"]])
+    print("🧠 Preview merged predictions:")
+    print(preds.head())
+
+    # ✅ Rule 1: Confidence ≥ 0.70
+    preds = preds[preds["confidence"] >= 0.70]
+    print(f"🎯 Passed confidence filter: {len(preds)} signals")
+
+    # ✅ Rule 2: Checklist Score ≥ 3
+    preds = preds[preds["checklist_score"] >= 3]
+    print(f"✅ Passed checklist score filter: {len(preds)} signals")
+
+    # ✅ Rule 3: Limit to top N signals by confidence
+    N = 3
+    preds = preds.sort_values(by="confidence", ascending=False).head(N)
+    print(f"⛔️ Throttled to top {N} signals")
+
+    # Decision logic
+    preds["final_decision"] = preds["prediction"].apply(
+        lambda x: "ENTER" if x == 1 else "WAIT"
+    )
+
+    # Save results
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS filtered_signals (
+            signal_id INTEGER PRIMARY KEY,
+            prediction INTEGER,
+            confidence REAL,
+            confidence_band TEXT,
+            final_decision TEXT,
+            checklist_score INTEGER,
+            timestamp TEXT
+        )
+    """)
+
+    for _, row in preds.iterrows():
+        cursor.execute("""
+            INSERT OR REPLACE INTO filtered_signals
+            (signal_id, prediction, confidence, confidence_band, final_decision, checklist_score, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            row["signal_id"], row["prediction"], row["confidence"],
+            row["confidence_band"], row["final_decision"],
+            row["checklist_score"], row["timestamp"]
+        ))
+        print(f"✅ Signal {row['signal_id']} → {row['final_decision']} (conf: {row['confidence']:.2f})")
+
+    conn.commit()
+    conn.close()
+    print("🎉 Risk filter completed and stored results.")
 
 if __name__ == "__main__":
-    run_filter()
+    apply_risk_filters()
