@@ -24,7 +24,7 @@ for row in rows:
         2 if result.get("label_2p_loss_d5") else
         0
     )
-    result["outcome_class"] = outcome_class
+    result["outcome_class"] = int(outcome_class)  # ✅ Ensure it’s INT
 
     # Build dynamic insert
     cols = ", ".join(result.keys())
