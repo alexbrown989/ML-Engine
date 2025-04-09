@@ -4,7 +4,7 @@ def build_features():
     conn = sqlite3.connect("signals.db")
     cursor = conn.cursor()
 
-    # 💡 Fix: outcome_class now INT for ML compatibility
+    # Ensure proper table schema
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS features (
             signal_id INTEGER PRIMARY KEY,
@@ -22,7 +22,7 @@ def build_features():
         )
     ''')
 
-    # Fetch data from signals + labels
+    # Pull signal data + labels
     cursor.execute('''
         SELECT s.id, s.vix, s.vvix, s.skew, s.rsi, s.regime, s.checklist_score,
                l.chop_flag, l.outcome_class
@@ -34,6 +34,12 @@ def build_features():
     for row in rows:
         signal_id, vix, vvix, skew, rsi, regime, checklist, chop_flag, outcome = row
         try:
+            # ⚠️ Skip rows with NULL labels
+            if outcome is None:
+                print(f"⚠️ Skipping signal {signal_id}: no outcome_class.")
+                continue
+
+            # Derived features
             vvs_adj = (vix + vvix) / skew if skew else None
             vvs_roc_5d = None  # Placeholder
 
@@ -52,6 +58,9 @@ def build_features():
     conn.commit()
     conn.close()
     print("✅ Features built and stored.")
+
+if __name__ == "__main__":
+    build_features()
 
 if __name__ == "__main__":
     build_features()
