@@ -1,43 +1,46 @@
-name: Train Model and Deploy
+name: ML Workflow
 
 on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 jobs:
-  train:
+  build:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout code
       - name: Checkout code
         uses: actions/checkout@v2
 
+      # Step 2: Set up Python
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.9'
+          python-version: '3.8'
 
+      # Step 3: Install dependencies
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run training script
+      # Step 4: Running your scripts (like training the model, testing, etc.)
+      - name: Run training and other scripts
         run: |
-          python train_model.py
+          python modules/run.py  # This will trigger your main script
 
-      - name: Upload trained model
+      # Step 5: Upload artifact after model training
+      - name: Upload model artifact
         uses: actions/upload-artifact@v2
         with:
-          name: xgboost-model
-          path: model_xgb.pkl
+          name: model-artifact
+          path: ./models/model_xgb.pkl  # Adjust this to match where your model is saved
 
-      - name: Upload logs
+      # Optional: If you want to store other important files as artifacts
+      - name: Upload other artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: retraining-logs
-          path: retraining_log.txt
+          name: logs
+          path: ./logs/  # You can change this path to where your logs or results are stored
