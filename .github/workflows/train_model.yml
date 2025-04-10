@@ -1,7 +1,10 @@
-name: Train Model
+name: Train Model and Deploy
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
     branches:
       - main
 
@@ -11,18 +14,29 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.x'
+          python-version: '3.9'
+
       - name: Install dependencies
         run: |
+          pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run training script
+
+      - name: Run training
         run: |
-          python train_model.py
-      - name: Commit updated model
-        run: |
-          git add model_xgb.pkl
-          git commit -m "Updated trained model"
-          git push
+          python train_module.py
+
+      - name: Upload model
+        uses: actions/upload-artifact@v2
+        with:
+          name: xgboost-model
+          path: model_xgb.pkl
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v2
+        with:
+          name: retraining-logs
+          path: retraining_log.txt
