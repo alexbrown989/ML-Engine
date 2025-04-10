@@ -18,30 +18,26 @@ def train_model():
         print("❌ No data to train on. Exiting.")
         return
 
-    print("\n🧠 Column types before preprocessing:")
+    # Fill missing regime columns
+    for regime in ['regime_calm', 'regime_panic', 'regime_transition']:
+        if regime not in df.columns:
+            df[regime] = np.nan  # Or fill with 0 if you prefer
+    
+    print(f"\n🧠 Column types before preprocessing:")
     print(df.dtypes)
 
-    print("\n🔍 Missing values per column:")
-    print(df.isnull().sum())
-
-    # One-hot encoding for the 'regime' column
-    print("\n🔧 Processing categorical 'regime' column (one-hot encoding)...")
+    # One-hot encode the regime column
+    df['regime'] = df['regime'].astype(str)  # Ensure it's a string before one-hot encoding
     df = pd.get_dummies(df, columns=['regime'], drop_first=True)
-    print(f"🧠 One-hot encoded regime. Columns: {df.columns}")
 
     # Ensure 'vvs_roc_5d' is numeric
     df['vvs_roc_5d'] = pd.to_numeric(df['vvs_roc_5d'], errors='coerce')
     df['vvs_roc_5d'].fillna(df['vvs_roc_5d'].mean(), inplace=True)
 
-    # Handling missing features like regime_calm, regime_panic
-    for regime in ['regime_calm', 'regime_panic', 'regime_transition']:
-        if regime not in df.columns:
-            df[regime] = np.nan  # Or 0 depending on your preference
-
     print("\n🧠 Column types after preprocessing:")
     print(df.dtypes)
 
-    # Preparing features and target
+    # Prepare features and target
     X = df.drop(columns=["signal_id", "outcome_class"])
     y = df["outcome_class"].astype(int) - 1  # Assumes outcome_class is in [1, 2] range
 
@@ -49,10 +45,7 @@ def train_model():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
     print(f"📊 Training with {len(X_train)} rows, testing with {len(X_test)} rows.")
-    print("\n🧠 Preview of X_train:")
-    print(X_train.head())
-
-    # Train XGBoost model
+    
     model = xgb.XGBClassifier(
         use_label_encoder=False,
         eval_metric="mlogloss",
@@ -73,14 +66,5 @@ def train_model():
     confidence_band = ['HIGH' if prob[1] > 0.7 else 'MEDIUM' if prob[1] > 0.4 else 'LOW' for prob in y_proba]
 
     accuracy = accuracy_score(y_test, y_pred)
-    print(f"🎯 Accuracy after retraining: {accuracy * 100:.2f}%")
-
-    # Save model
-    model_filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
-    with open(model_filename, "wb") as f:
-        pickle.dump(model, f)
-    print(f"✅ New model saved as {model_filename}")
-
-if __name__ == "__main__":
-    train_model()
+    print(f"
 
