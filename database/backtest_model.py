@@ -19,8 +19,16 @@ def get_random_stock_data():
     # Download data from Yahoo Finance
     data = yf.download(ticker, start=start_date, end=end_date)
 
+    # Print the column names to check the available columns
+    print("Downloaded data columns:", data.columns)
+
     # Use the adjusted closing prices to simulate "entry price"
-    data['entry_price'] = data['Adj Close']
+    if 'Adj Close' in data.columns:
+        data['entry_price'] = data['Adj Close']
+    else:
+        print("Warning: 'Adj Close' not found, using 'Close' instead.")
+        data['entry_price'] = data['Close']
+
     return data
 
 # Function to load the pre-trained model
@@ -83,3 +91,4 @@ def backtest():
 # Running the backtest function
 if __name__ == "__main__":
     backtest()
+
