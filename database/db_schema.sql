@@ -1,0 +1,78 @@
+-- Create signals table
+CREATE TABLE IF NOT EXISTS signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT,
+    ticker TEXT,
+    entry_price REAL,
+    rsi REAL,
+    vix REAL,
+    vvix REAL,
+    skew REAL,
+    regime TEXT,
+    checklist_score INTEGER
+);
+
+-- Create labels table with new columns
+CREATE TABLE IF NOT EXISTS labels (
+    signal_id INTEGER,
+    label_3p_win_d3 INTEGER,
+    label_5p_win_d3 INTEGER,
+    label_10p_win_d3 INTEGER,
+    label_2p_loss_d3 INTEGER,
+    label_3p_win_d5 INTEGER,
+    label_5p_win_d5 INTEGER,
+    label_10p_win_d5 INTEGER,
+    label_2p_loss_d5 INTEGER,
+    label_3p_win_d7 INTEGER,
+    label_5p_win_d7 INTEGER,
+    label_10p_win_d7 INTEGER,
+    label_2p_loss_d7 INTEGER,
+    label_3p_win_d10 INTEGER,
+    label_5p_win_d10 INTEGER,
+    label_10p_win_d10 INTEGER,
+    label_2p_loss_d10 INTEGER,
+    chop_flag INTEGER,
+    max_gain_pct REAL,
+    max_drawdown_pct REAL,
+    days_to_max_gain TEXT,
+    days_to_max_loss TEXT,
+    net_return_pct REAL,
+    gain_to_loss_ratio REAL,
+    volatility_range_pct REAL,
+    outcome_class TEXT,
+    directional_bias TEXT,
+    days_held INTEGER,
+    label_reason TEXT,
+    vvs_roc_5d REAL,
+    skew_normalized REAL,
+    regime_calm BOOLEAN,
+    regime_panic BOOLEAN,
+    regime_transition BOOLEAN,
+    macd_hist REAL,
+    obv_roc_5d REAL,
+    volume_change_pct REAL,
+    price_distance_to_sr REAL,
+    fib_zone REAL,
+    trend_50_200 BOOLEAN,
+    news_sentiment_score REAL,
+    headline_count_24h INTEGER,
+    days_to_earnings INTEGER,
+    pre_earnings_flag BOOLEAN,
+    avg_eps_surprise REAL,
+    earnings_volatility_avg REAL,
+    strike_distance_pct REAL,
+    iv_rank REAL,
+    iv_percentile_30d REAL,
+    FOREIGN KEY(signal_id) REFERENCES signals(id)
+);
+
+-- Create filtered_signals table (if not exists)
+CREATE TABLE IF NOT EXISTS filtered_signals (
+    signal_id INTEGER PRIMARY KEY,
+    prediction INTEGER,
+    confidence REAL,
+    confidence_band TEXT,
+    final_decision TEXT,
+    checklist_score INTEGER,
+    timestamp TEXT
+);
