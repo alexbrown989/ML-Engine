@@ -74,7 +74,8 @@ def train_model():
 
 def log_performance(accuracy, X_test, y_test, y_pred):
     # Calculate accuracy per regime and confidence level
-    regimes = X_test['regime']  # Assume 'regime' is a column in X_test DataFrame
+    # Since regime is now split into dummy columns, we handle them accordingly
+    regime_columns = [col for col in X_test.columns if col.startswith('regime_')]
     confidence_levels = ['LOW', 'MEDIUM', 'HIGH']
     
     accuracy_per_confidence = {}
@@ -87,18 +88,20 @@ def log_performance(accuracy, X_test, y_test, y_pred):
         accuracy_per_confidence[conf] = conf_accuracy
         print(f"📊 Accuracy for {conf} confidence: {conf_accuracy * 100:.2f}%")
 
-    for regime in regimes.unique():
-        # Filter based on regime
-        mask = regimes == regime
+    for regime in regime_columns:
+        # Get the regime column
+        mask = X_test[regime] == 1  # regime is now a dummy column with values 0 or 1
         regime_accuracy = accuracy_score(y_test[mask], y_pred[mask])
-        accuracy_per_regime[regime] = regime_accuracy
-        print(f"📊 Accuracy for {regime} regime: {regime_accuracy * 100:.2f}%")
+        regime_name = regime.replace('regime_', '')  # Clean the column name to get the regime name
+        accuracy_per_regime[regime_name] = regime_accuracy
+        print(f"📊 Accuracy for {regime_name} regime: {regime_accuracy * 100:.2f}%")
     
     # Save these logs to database or file
     with open("performance_log.txt", "a") as log:
         log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Accuracy: {accuracy * 100:.2f}%\n")
         log.write(f"Accuracy by confidence: {accuracy_per_confidence}\n")
         log.write(f"Accuracy by regime: {accuracy_per_regime}\n")
+
 
 if __name__ == "__main__":
     train_model()
