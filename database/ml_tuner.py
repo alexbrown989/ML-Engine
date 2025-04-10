@@ -49,13 +49,30 @@ def train_model():
     )
     model.fit(X_train, y_train)
 
+    # Get predicted probabilities and calculate confidence band
+    y_pred_proba = model.predict_proba(X_test)
+    
+    # Calculate confidence bands using np.select
+    probabilities_class1 = y_pred_proba[:, 1]  # Probabilities for the positive class
+
+    conditions = [
+        probabilities_class1 < 0.50,                         # Condition for LOW
+        (probabilities_class1 >= 0.50) & (probabilities_class1 < 0.80), # Condition for MEDIUM
+        probabilities_class1 >= 0.80                          # Condition for HIGH
+    ]
+    choices = ['LOW', 'MEDIUM', 'HIGH'] # Corresponding category for each condition
+
+    X_test['confidence_band'] = np.select(conditions, choices, default='UNKNOWN')
+
+    # Derive y_pred from probabilities (0 if proba < 0.5, 1 if proba >= 0.5)
+    y_pred = (y_pred_proba[:, 1] >= 0.5).astype(int)
+
     # Evaluate model performance
-    y_pred = model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
     print(f"🎯 Accuracy after retraining: {accuracy * 100:.2f}%")
 
     # Log accuracy per regime and confidence level
-    log_performance(accuracy, X_test, y_test, y_pred, X_test_original_regimes)
+    log_performance(accuracy, model, X_test, y_test, y_pred, X_test_original_regimes)
 
     # Save the new model
     model_filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
@@ -77,7 +94,7 @@ def process_categorical(df):
     df = pd.get_dummies(df, columns=["regime"], drop_first=True)
     return df
 
-def log_performance(accuracy, X_test, y_test, y_pred, original_regimes):
+def log_performance(accuracy, model, X_test, y_test, y_pred, original_regimes):
     # Calculate accuracy per regime and confidence level
     confidence_levels = ['LOW', 'MEDIUM', 'HIGH']
     accuracy_per_confidence = {}
