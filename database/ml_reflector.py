@@ -27,9 +27,8 @@ def run_reflection():
         FROM signals
     """, conn)
 
-    # Debug: Check loaded data
     print(f"\n🧠 Loaded true labels: {len(labels)} labels")
-    print(f"\n🧠 Loaded extra signal data: {len(signals)} signals")
+    print(f"🧠 Loaded extra signal data: {len(signals)} signals")
     
     # Merge all dataframes
     df = preds.merge(labels, on="signal_id", how="inner")
@@ -49,7 +48,6 @@ def run_reflection():
     df["is_correct"] = (df["prediction"] == df["outcome_class"]).astype(int)
     df["reflect_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Show preview of the reflection data
     print("🔎 Sample reflection results:")
     print(df[["signal_id", "prediction", "outcome_class", "is_correct", "confidence", "confidence_band", "regime"]].head())
 
@@ -100,4 +98,5 @@ def run_reflection():
 
 if __name__ == "__main__":
     run_reflection()
+
 
