@@ -1,13 +1,11 @@
 import sqlite3
 import pandas as pd
-import pickle
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, confusion_matrix
-import seaborn as sns
+from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
+import numpy as np
 from datetime import datetime
-import os
 
 def train_model():
     print(f"\n🔄 Retraining model at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -15,7 +13,7 @@ def train_model():
     conn = sqlite3.connect("signals.db")
     
     # Load data
-    df = pd.read_sql_query(""" 
+    df = pd.read_sql_query("""
         SELECT * FROM features
         WHERE outcome_class IS NOT NULL
     """, conn)
@@ -25,28 +23,6 @@ def train_model():
         print("❌ No data to train on. Exiting.")
         return
 
-    # Debug: Print column types before processing
-    print("\n🧠 Column types before preprocessing:")
-    print(df.dtypes)
-
-    # Debug: Check for missing values
-    print("\n🔍 Missing values per column:")
-    print(df.isnull().sum())
-
-    # Fix the `regime` column: Convert to dummies (one-hot encoding)
-    print("\n🔧 Processing categorical 'regime' column (one-hot encoding)...")
-    if 'regime' in df.columns:
-        df = pd.get_dummies(df, columns=['regime'], prefix='regime')
-
-    # Fix the `vvs_roc_5d` column if it exists: Convert to numeric and handle NaNs
-    if 'vvs_roc_5d' in df.columns:
-        df['vvs_roc_5d'] = pd.to_numeric(df['vvs_roc_5d'], errors='coerce')  # Convert to numeric, invalid parsing will be NaN
-        df['vvs_roc_5d'].fillna(df['vvs_roc_5d'].mean(), inplace=True)  # Fill NaNs with the mean of the column
-
-    # Debug: Print column types after preprocessing
-    print("\n🧠 Column types after preprocessing:")
-    print(df.dtypes)
-
     # Preparing features and target
     X = df.drop(columns=["signal_id", "outcome_class"])
     y = df["outcome_class"]
@@ -55,59 +31,32 @@ def train_model():
     y = y.astype(int) - 1  # Assumes that outcome_class is in [1, 2] range
 
     # Split into train and test
-    test_size = 0.3 if len(df) < 100 else 0.2  # Dynamic based on dataset size
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, shuffle=False)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
-    # Debug: Print shapes and a preview of the train/test sets
     print(f"📊 Training with {len(X_train)} rows, testing with {len(X_test)} rows.")
-    print("\n🧠 Preview of X_train:")
-    print(X_train.head())
 
-    # Handle class imbalance by setting scale_pos_weight (increase weight for minority class)
-    scale_pos_weight = len(y_train) / sum(y_train == 0)  # Calculate scale_pos_weight dynamically
+    # Process categorical 'regime' column (one-hot encoding)
+    X_train = process_categorical(X_train)
+    X_test = process_categorical(X_test)
 
     # Train XGBoost model
     model = xgb.XGBClassifier(
         use_label_encoder=False,
-        eval_metric="mlogloss",
-        enable_categorical=True,  # Enable categorical handling if needed
-        scale_pos_weight=scale_pos_weight  # Handle class imbalance
+        eval_metric="mlogloss"
     )
-
-    try:
-        print("🔧 Training XGBoost model...")
-        model.fit(X_train, y_train)
-    except ValueError as e:
-        print(f"❌ Error during training: {str(e)}")
-        return
+    model.fit(X_train, y_train)
 
     # Evaluate model performance
-    y_pred = model.predict(X_test)  # Predicted classes
-    y_proba = model.predict_proba(X_test)  # Predicted probabilities
-
-    # Calculate confidence bands based on predicted probabilities
-    confidence_band = ['HIGH' if prob[1] > 0.7 else 'MEDIUM' if prob[1] > 0.4 else 'LOW' for prob in y_proba]
-
+    y_pred = model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
     print(f"🎯 Accuracy after retraining: {accuracy * 100:.2f}%")
 
     # Log accuracy per regime and confidence level
-    log_performance(accuracy, X_test, y_test, y_pred, confidence_band, model)
+    log_performance(accuracy, X_test, y_test, y_pred)
 
     # Save the new model
     model_filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
-    model_path = "models/"
-    if not os.path.exists(model_path):
-        os.makedirs(model_path)
-
-    # Remove old models if there are more than 5
-    existing_models = [f for f in os.listdir(model_path) if f.endswith('.pkl')]
-    if len(existing_models) >= 5:
-        oldest_model = min(existing_models, key=lambda f: os.path.getctime(os.path.join(model_path, f)))
-        os.remove(os.path.join(model_path, oldest_model))
-
-    # Save the model
-    with open(os.path.join(model_path, model_filename), "wb") as f:
+    with open(model_filename, "wb") as f:
         pickle.dump(model, f)
     print(f"✅ New model saved as {model_filename}")
 
@@ -115,32 +64,46 @@ def train_model():
     with open("retraining_log.txt", "a") as log:
         log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Accuracy: {accuracy * 100:.2f}%\n")
 
+def process_categorical(df):
+    # Handle 'vvs_roc_5d' column by converting it to numeric and filling NaNs
+    df['vvs_roc_5d'] = pd.to_numeric(df['vvs_roc_5d'], errors='coerce')
+    df['vvs_roc_5d'].fillna(df['vvs_roc_5d'].mean(), inplace=True)
+    
+    # Process 'regime' column with one-hot encoding
+    df = pd.get_dummies(df, columns=["regime"], drop_first=True)
+    return df
 
-def log_performance(accuracy, X_test, y_test, y_pred, confidence_band, model):
+def log_performance(accuracy, X_test, y_test, y_pred):
     # Calculate accuracy per regime and confidence level
-    regime_columns = [col for col in X_test.columns if col.startswith('regime_')]
+    regimes = X_test['regime_calm']  # Assume 'regime' is one-hot encoded
     confidence_levels = ['LOW', 'MEDIUM', 'HIGH']
 
     accuracy_per_confidence = {}
     accuracy_per_regime = {}
 
-    # Debug: Print performance logging steps
-    print("\n🔍 Logging performance...")
-
     for conf in confidence_levels:
-        # Filter based on confidence_band
-        mask = [conf == band for band in confidence_band]
-        conf_accuracy = accuracy_score(y_test[mask], y_pred[mask])
-        accuracy_per_confidence[conf] = conf_accuracy
-        print(f"📊 Accuracy for {conf} confidence: {conf_accuracy * 100:.2f}%")
+        # Calculate accuracy for each confidence level
+        mask = X_test['confidence_band'] == conf
+        if mask.any():
+            conf_accuracy = accuracy_score(y_test[mask], y_pred[mask])
+            accuracy_per_confidence[conf] = conf_accuracy
+            print(f"📊 Accuracy for {conf} confidence: {conf_accuracy * 100:.2f}%")
+        else:
+            accuracy_per_confidence[conf] = 'N/A'
+            print(f"📊 Accuracy for {conf} confidence: N/A")
 
-    for regime in regime_columns:
-        # Get the regime column
-        mask = X_test[regime] == 1  # regime is now a dummy column with values 0 or 1
-        regime_accuracy = accuracy_score(y_test[mask], y_pred[mask])
-        regime_name = regime.replace('regime_', '')  # Clean the column name to get the regime name
-        accuracy_per_regime[regime_name] = regime_accuracy
-        print(f"📊 Accuracy for {regime_name} regime: {regime_accuracy * 100:.2f}%")
+    for regime in regimes.unique():
+        mask = regimes == regime
+        if mask.any():
+            regime_accuracy = accuracy_score(y_test[mask], y_pred[mask])
+            accuracy_per_regime[regime] = regime_accuracy
+            print(f"📊 Accuracy for {regime} regime: {regime_accuracy * 100:.2f}%")
+        else:
+            accuracy_per_regime[regime] = 'N/A'
+            print(f"📊 Accuracy for {regime} regime: N/A")
+
+    # Optionally, plot feature importance
+    plot_feature_importance(model)
 
     # Save these logs to database or file
     with open("performance_log.txt", "a") as log:
@@ -148,23 +111,9 @@ def log_performance(accuracy, X_test, y_test, y_pred, confidence_band, model):
         log.write(f"Accuracy by confidence: {accuracy_per_confidence}\n")
         log.write(f"Accuracy by regime: {accuracy_per_regime}\n")
 
-    # Generate confusion matrix for a better visual analysis of predictions
-    cm = confusion_matrix(y_test, y_pred)
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-    plt.title("Confusion Matrix")
-    plt.xlabel("Predicted")
-    plt.ylabel("Actual")
-    plt.show()
-
-    # Plot Feature Importance
-    plot_feature_importance(model)
-
-
 def plot_feature_importance(model):
-    # Plot feature importance to see which features are driving the model's predictions
-    print("\n🔧 Plotting feature importance...")
-    xgb.plot_importance(model, importance_type='weight')
-    plt.title("Feature Importance")
+    # Plot feature importance
+    xgb.plot_importance(model, importance_type="weight", max_num_features=10)
     plt.show()
 
 if __name__ == "__main__":
