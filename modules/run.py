@@ -4,31 +4,31 @@ import os
 def run_all():
     print("🚀 Running all scripts...")
 
-    # Initialize database schema
+    # Initialize the database schema (tables for signals, features, and labels)
     os.system("python database/db_init.py")
 
-    # Create/Build features
+    # Build features (calculation of technical features)
     os.system("python database/build_features.py")
 
-    # Run labeling process
+    # Label the data (adding labels for classification)
     os.system("python labeling/label_batch.py")
 
-    # Apply risk filters
+    # Apply risk filters (filter out weak signals)
     os.system("python database/risk_filter.py")
 
-    # Run model training and tuning
+    # Train the model (XGBoost, hyperparameter tuning)
     os.system("python database/ml_tuner.py")
 
-    # Run model reflection (evaluate model performance)
+    # Reflect on model performance (evaluate prediction accuracy)
     os.system("python database/ml_reflector.py")
 
-    # Test the trained model
+    # Test the model (evaluate on a test dataset)
     os.system("python database/test_model.py")
 
-    # Run inference on new data (using trained model)
+    # Make predictions on new data (inference)
     os.system("python database/inference.py")
 
-    # Optionally: Run the backtest
+    # Optionally: Run backtesting (simulate trading with historical data)
     os.system("python database/backtest_model.py")
 
 if __name__ == "__main__":
