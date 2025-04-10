@@ -32,6 +32,14 @@ def train_model():
     # Ensure outcome_class is integer-encoded [0, 1]
     y = y.astype(int) - 1  # Assumes that outcome_class is in [1, 2] range
 
+    # Handle categorical columns and missing values
+    X = pd.get_dummies(X, drop_first=True)  # Convert categorical columns to dummy variables
+    X = X.apply(pd.to_numeric, errors='coerce')  # Convert any remaining columns to numeric (NaN where errors occur)
+    X = X.fillna(0)  # Fill missing values with 0 (you can use other imputation strategies)
+
+    # Check if there are still any non-numeric columns
+    print(f"📊 Feature data types after preprocessing: {X.dtypes.unique()}")
+
     # Split into train and test datasets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
@@ -94,4 +102,3 @@ def log_performance(accuracy, X_test, y_test, y_pred):
 
 if __name__ == "__main__":
     train_model()
-
