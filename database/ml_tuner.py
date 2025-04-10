@@ -36,13 +36,6 @@ def train_model():
 
     print(f"📊 Training with {len(X_train)} rows, testing with {len(X_test)} rows.")
 
-    # Store original regimes for accuracy calculation later
-    X_test_original_regimes = X_test['regime'].copy()  # Store before modification
-
-    # Process categorical 'regime' column (one-hot encoding)
-    X_train = process_categorical(X_train)
-    X_test = process_categorical(X_test)
-
     # Train XGBoost model
     model = xgb.XGBClassifier(
         use_label_encoder=False,
@@ -72,9 +65,6 @@ def train_model():
     accuracy = accuracy_score(y_test, y_pred)
     print(f"🎯 Accuracy after retraining: {accuracy * 100:.2f}%")
 
-    # Log accuracy per regime and confidence level
-    log_performance(accuracy, model, X_test, y_test, y_pred, X_test_original_regimes)
-
     # Save the new model
     model_filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
     with open(model_filename, "wb") as f:
@@ -85,18 +75,8 @@ def train_model():
     with open("retraining_log.txt", "a") as log:
         log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Accuracy: {accuracy * 100:.2f}%\n")
 
-def process_categorical(df):
-    # Handle 'vvs_roc_5d' column by converting it to numeric and filling NaNs
-    df['vvs_roc_5d'] = pd.to_numeric(df['vvs_roc_5d'], errors='coerce')
-    mean_vvs_roc = df['vvs_roc_5d'].mean()
-    df['vvs_roc_5d'] = df['vvs_roc_5d'].fillna(mean_vvs_roc)
-    
-    # Process 'regime' column with one-hot encoding
-    df = pd.get_dummies(df, columns=["regime"], drop_first=True)
-    return df
-
 def log_performance(accuracy, model, X_test, y_test, y_pred, original_regimes):
-    # Calculate accuracy per regime and confidence level
+    # Log accuracy per regime and confidence level
     confidence_levels = ['LOW', 'MEDIUM', 'HIGH']
     accuracy_per_confidence = {}
     accuracy_per_regime = {}
@@ -139,5 +119,4 @@ def plot_feature_importance(model):
 
 if __name__ == "__main__":
     train_model()
-
 
