@@ -1,4 +1,3 @@
-
 import sqlite3
 
 conn = sqlite3.connect('signals.db')
@@ -49,4 +48,3 @@ conn.commit()
 conn.close()
 print("✅ Database initialized: signals.db")
 print("✅ DB and tables created at:", conn)
-
