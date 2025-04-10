@@ -35,6 +35,9 @@ def train_model():
 
     print(f"📊 Training with {len(X_train)} rows, testing with {len(X_test)} rows.")
 
+    # Store original regimes for accuracy calculation later
+    X_test_original_regimes = X_test['regime'].copy()  # Store before modification
+
     # Process categorical 'regime' column (one-hot encoding)
     X_train = process_categorical(X_train)
     X_test = process_categorical(X_test)
@@ -52,7 +55,7 @@ def train_model():
     print(f"🎯 Accuracy after retraining: {accuracy * 100:.2f}%")
 
     # Log accuracy per regime and confidence level
-    log_performance(accuracy, X_test, y_test, y_pred)
+    log_performance(accuracy, X_test, y_test, y_pred, X_test_original_regimes)
 
     # Save the new model
     model_filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
@@ -67,22 +70,21 @@ def train_model():
 def process_categorical(df):
     # Handle 'vvs_roc_5d' column by converting it to numeric and filling NaNs
     df['vvs_roc_5d'] = pd.to_numeric(df['vvs_roc_5d'], errors='coerce')
-    df['vvs_roc_5d'].fillna(df['vvs_roc_5d'].mean(), inplace=True)
+    mean_vvs_roc = df['vvs_roc_5d'].mean()
+    df['vvs_roc_5d'] = df['vvs_roc_5d'].fillna(mean_vvs_roc)
     
     # Process 'regime' column with one-hot encoding
     df = pd.get_dummies(df, columns=["regime"], drop_first=True)
     return df
 
-def log_performance(accuracy, X_test, y_test, y_pred):
+def log_performance(accuracy, X_test, y_test, y_pred, original_regimes):
     # Calculate accuracy per regime and confidence level
-    regimes = X_test['regime_calm']  # Assume 'regime' is one-hot encoded
     confidence_levels = ['LOW', 'MEDIUM', 'HIGH']
-
     accuracy_per_confidence = {}
     accuracy_per_regime = {}
 
+    # Calculate accuracy per confidence level
     for conf in confidence_levels:
-        # Calculate accuracy for each confidence level
         mask = X_test['confidence_band'] == conf
         if mask.any():
             conf_accuracy = accuracy_score(y_test[mask], y_pred[mask])
@@ -92,15 +94,16 @@ def log_performance(accuracy, X_test, y_test, y_pred):
             accuracy_per_confidence[conf] = 'N/A'
             print(f"📊 Accuracy for {conf} confidence: N/A")
 
-    for regime in regimes.unique():
-        mask = regimes == regime
+    # Calculate accuracy per regime using original regimes (before one-hot encoding)
+    for regime_value in original_regimes.unique():
+        mask = original_regimes == regime_value
         if mask.any():
             regime_accuracy = accuracy_score(y_test[mask], y_pred[mask])
-            accuracy_per_regime[regime] = regime_accuracy
-            print(f"📊 Accuracy for {regime} regime: {regime_accuracy * 100:.2f}%")
+            accuracy_per_regime[regime_value] = regime_accuracy
+            print(f"📊 Accuracy for {regime_value} regime: {regime_accuracy * 100:.2f}%")
         else:
-            accuracy_per_regime[regime] = 'N/A'
-            print(f"📊 Accuracy for {regime} regime: N/A")
+            accuracy_per_regime[regime_value] = 'N/A'
+            print(f"📊 Accuracy for {regime_value} regime: N/A")
 
     # Optionally, plot feature importance
     plot_feature_importance(model)
