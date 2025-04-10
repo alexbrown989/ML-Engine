@@ -5,7 +5,6 @@ from datetime import datetime
 def run_reflection():
     print(f"\n🪞 Starting reflection engine @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # Connect to the database
     conn = sqlite3.connect("signals.db")
 
     # Load predictions
@@ -28,7 +27,11 @@ def run_reflection():
         FROM signals
     """, conn)
 
-    # Merge predictions, labels, and additional signal info
+    # Debug: Check loaded data
+    print(f"\n🧠 Loaded true labels: {len(labels)} labels")
+    print(f"\n🧠 Loaded extra signal data: {len(signals)} signals")
+    
+    # Merge all dataframes
     df = preds.merge(labels, on="signal_id", how="inner")
     df = df.merge(signals, on="signal_id", how="left")
 
@@ -38,15 +41,19 @@ def run_reflection():
         print("❌ No matches found between predictions and labels. Exiting.")
         return
 
-    # Compute reflection columns
+    # Debug: Display a preview of the merged dataframe
+    print("\n🔎 Sample merged data:")
+    print(df.head())
+
+    # Compute reflection columns: correct or incorrect predictions
     df["is_correct"] = (df["prediction"] == df["outcome_class"]).astype(int)
     df["reflect_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Show preview of the reflections
+    # Show preview of the reflection data
     print("🔎 Sample reflection results:")
     print(df[["signal_id", "prediction", "outcome_class", "is_correct", "confidence", "confidence_band", "regime"]].head())
 
-    # Create reflections table if not exists
+    # Create table for reflections if not exists
     conn.execute("""
         CREATE TABLE IF NOT EXISTS reflections (
             signal_id INTEGER PRIMARY KEY,
@@ -62,30 +69,34 @@ def run_reflection():
         )
     """)
 
-    # Insert reflections
-    for _, row in df.iterrows():
-        conn.execute("""
-            INSERT OR REPLACE INTO reflections (
-                signal_id, prediction, actual, is_correct,
-                confidence, confidence_band, regime, checklist_score,
-                prediction_time, reflect_timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            row["signal_id"],
-            row["prediction"],
-            row["outcome_class"],
-            row["is_correct"],
-            row["confidence"],
-            row["confidence_band"],
-            row["regime"],
-            row["checklist_score"],
-            row["timestamp"],
-            row["reflect_timestamp"]
-        ))
-
-    conn.commit()
+    # Insert reflections into the reflections table
+    try:
+        for _, row in df.iterrows():
+            conn.execute("""
+                INSERT OR REPLACE INTO reflections (
+                    signal_id, prediction, actual, is_correct,
+                    confidence, confidence_band, regime, checklist_score,
+                    prediction_time, reflect_timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                row["signal_id"],
+                row["prediction"],
+                row["outcome_class"],
+                row["is_correct"],
+                row["confidence"],
+                row["confidence_band"],
+                row["regime"],
+                row["checklist_score"],
+                row["timestamp"],
+                row["reflect_timestamp"]
+            ))
+        
+        conn.commit()
+        print(f"✅ Reflections saved for {len(df)} signals.")
+    except Exception as e:
+        print(f"❌ Error during reflections insertion: {str(e)}")
+    
     conn.close()
-    print(f"✅ Reflections saved for {len(df)} signals.")
 
 if __name__ == "__main__":
     run_reflection()
