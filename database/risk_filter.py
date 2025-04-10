@@ -39,6 +39,9 @@ def apply_risk_filters():
     preds = preds.sort_values(by="confidence", ascending=False).head(N)
     print(f"⛔️ Throttled to top {N} signals")
 
+    # Adding confidence band logic
+    preds["confidence_band"] = preds["confidence"].apply(assign_confidence_band)
+
     # Decision logic
     preds["final_decision"] = preds["prediction"].apply(
         lambda x: "ENTER" if x == 1 else "WAIT"
@@ -74,5 +77,14 @@ def apply_risk_filters():
     conn.close()
     print("🎉 Risk filter completed and stored results.")
 
+def assign_confidence_band(confidence):
+    if confidence >= 0.8:
+        return "HIGH"
+    elif confidence >= 0.5:
+        return "MEDIUM"
+    else:
+        return "LOW"
+
 if __name__ == "__main__":
     apply_risk_filters()
+
