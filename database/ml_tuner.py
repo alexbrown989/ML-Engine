@@ -7,6 +7,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
 from datetime import datetime
+import os
 
 def train_model():
     print(f"\n🔄 Retraining model at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -95,7 +96,18 @@ def train_model():
 
     # Save the new model
     model_filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
-    with open(model_filename, "wb") as f:
+    model_path = "models/"
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+
+    # Remove old models if there are more than 5
+    existing_models = [f for f in os.listdir(model_path) if f.endswith('.pkl')]
+    if len(existing_models) >= 5:
+        oldest_model = min(existing_models, key=lambda f: os.path.getctime(os.path.join(model_path, f)))
+        os.remove(os.path.join(model_path, oldest_model))
+
+    # Save the model
+    with open(os.path.join(model_path, model_filename), "wb") as f:
         pickle.dump(model, f)
     print(f"✅ New model saved as {model_filename}")
 
@@ -157,4 +169,5 @@ def plot_feature_importance(model):
 
 if __name__ == "__main__":
     train_model()
+
 
