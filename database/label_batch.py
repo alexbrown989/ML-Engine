@@ -29,14 +29,12 @@ for row in rows:
         continue
 
     # Define class: 1 = win, 2 = loss, 0 = chop/neutral
-    if result["label_5p_win_d5"] and result["label_2p_loss_d5"]:
-        outcome_class = 0  # conflicting = chop
-    elif result["label_5p_win_d5"]:
-        outcome_class = 1
-    elif result["label_2p_loss_d5"]:
-        outcome_class = 2
+    if result["label_5p_win_d5"] and not result["label_2p_loss_d5"]:
+        outcome_class = 1  # win
+    elif result["label_2p_loss_d5"] and not result["label_5p_win_d5"]:
+        outcome_class = 2  # loss
     else:
-        outcome_class = 0
+        outcome_class = 0  # chop/neutral
 
     result["outcome_class"] = outcome_class
 
@@ -55,5 +53,3 @@ conn.commit()
 conn.close()
 print("✅ All signals labeled and stored.")
 
-conn.close()
-print("✅ All signals labeled and stored.")
