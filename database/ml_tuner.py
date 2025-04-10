@@ -26,6 +26,9 @@ def train_model():
     X = df.drop(columns=["signal_id", "outcome_class"])
     y = df["outcome_class"]
 
+    # Ensure outcome_class is integer-encoded [0, 1]
+    y = y.astype(int) - 1  # Assumes that outcome_class is in [1, 2] range
+
     # Split into train and test
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
@@ -55,6 +58,8 @@ def train_model():
     # Optionally, log retraining metrics
     with open("retraining_log.txt", "a") as log:
         log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Accuracy: {accuracy * 100:.2f}%\n")
+
+
 
 def log_performance(accuracy, X_test, y_test, y_pred):
     # Calculate accuracy per regime and confidence level
