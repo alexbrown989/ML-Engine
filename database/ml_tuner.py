@@ -22,6 +22,28 @@ def train_model():
         print("❌ No data to train on. Exiting.")
         return
 
+    # Debug: Print column types before processing
+    print("\n🧠 Column types before preprocessing:")
+    print(df.dtypes)
+
+    # Debug: Check for missing values
+    print("\n🔍 Missing values per column:")
+    print(df.isnull().sum())
+
+    # Fix the `regime` column: Convert to dummies (one-hot encoding)
+    print("\n🔧 Processing categorical 'regime' column (one-hot encoding)...")
+    if 'regime' in df.columns:
+        df = pd.get_dummies(df, columns=['regime'], prefix='regime')
+
+    # Fix the `vvs_roc_5d` column if it exists: Convert to numeric and handle NaNs
+    if 'vvs_roc_5d' in df.columns:
+        df['vvs_roc_5d'] = pd.to_numeric(df['vvs_roc_5d'], errors='coerce')  # Convert to numeric, invalid parsing will be NaN
+        df['vvs_roc_5d'].fillna(df['vvs_roc_5d'].mean(), inplace=True)  # Fill NaNs with the mean of the column
+
+    # Debug: Print column types after preprocessing
+    print("\n🧠 Column types after preprocessing:")
+    print(df.dtypes)
+
     # Preparing features and target
     X = df.drop(columns=["signal_id", "outcome_class"])
     y = df["outcome_class"]
@@ -32,14 +54,24 @@ def train_model():
     # Split into train and test
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
+    # Debug: Print shapes and a preview of the train/test sets
     print(f"📊 Training with {len(X_train)} rows, testing with {len(X_test)} rows.")
+    print("\n🧠 Preview of X_train:")
+    print(X_train.head())
 
     # Train XGBoost model
     model = xgb.XGBClassifier(
         use_label_encoder=False,
-        eval_metric="mlogloss"
+        eval_metric="mlogloss",
+        enable_categorical=True  # Enable categorical handling if needed
     )
-    model.fit(X_train, y_train)
+
+    try:
+        print("🔧 Training XGBoost model...")
+        model.fit(X_train, y_train)
+    except ValueError as e:
+        print(f"❌ Error during training: {str(e)}")
+        return
 
     # Evaluate model performance
     y_pred = model.predict(X_test)  # Predicted classes
@@ -73,6 +105,9 @@ def log_performance(accuracy, X_test, y_test, y_pred, confidence_band):
     accuracy_per_confidence = {}
     accuracy_per_regime = {}
 
+    # Debug: Print performance logging steps
+    print("\n🔍 Logging performance...")
+
     for conf in confidence_levels:
         # Filter based on confidence_band
         mask = [conf == band for band in confidence_band]
@@ -94,7 +129,6 @@ def log_performance(accuracy, X_test, y_test, y_pred, confidence_band):
         log.write(f"Accuracy by confidence: {accuracy_per_confidence}\n")
         log.write(f"Accuracy by regime: {accuracy_per_regime}\n")
 
-
-
 if __name__ == "__main__":
     train_model()
+
