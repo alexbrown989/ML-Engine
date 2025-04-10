@@ -9,9 +9,10 @@ from datetime import datetime
 def train_model():
     print(f"\n🔄 Retraining model at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+    # Connect to the database
     conn = sqlite3.connect("signals.db")
     
-    # Load data
+    # Load data from the database
     df = pd.read_sql_query("""
         SELECT * FROM features
         WHERE outcome_class IS NOT NULL
@@ -22,14 +23,16 @@ def train_model():
         print("❌ No data to train on. Exiting.")
         return
 
-    # Preparing features and target
+    # Preparing features and target variable
     X = df.drop(columns=["signal_id", "outcome_class"])
     y = df["outcome_class"]
+
+    print(f"📊 Features and labels loaded. X shape: {X.shape}, y shape: {y.shape}")
 
     # Ensure outcome_class is integer-encoded [0, 1]
     y = y.astype(int) - 1  # Assumes that outcome_class is in [1, 2] range
 
-    # Split into train and test
+    # Split into train and test datasets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
     print(f"📊 Training with {len(X_train)} rows, testing with {len(X_test)} rows.")
@@ -39,6 +42,7 @@ def train_model():
         use_label_encoder=False,
         eval_metric="mlogloss"
     )
+    print("🔧 Training XGBoost model...")
     model.fit(X_train, y_train)
 
     # Evaluate model performance
@@ -49,7 +53,7 @@ def train_model():
     # Log accuracy per regime and confidence level
     log_performance(accuracy, X_test, y_test, y_pred)
 
-    # Save the new model
+    # Save the new model with a timestamped filename
     model_filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
     with open(model_filename, "wb") as f:
         pickle.dump(model, f)
@@ -58,7 +62,6 @@ def train_model():
     # Optionally, log retraining metrics
     with open("retraining_log.txt", "a") as log:
         log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Accuracy: {accuracy * 100:.2f}%\n")
-
 
 
 def log_performance(accuracy, X_test, y_test, y_pred):
@@ -70,12 +73,14 @@ def log_performance(accuracy, X_test, y_test, y_pred):
     accuracy_per_regime = {}
 
     for conf in confidence_levels:
+        # Filter based on confidence_band
         mask = y_pred.confidence_band == conf
         conf_accuracy = accuracy_score(y_test[mask], y_pred[mask])
         accuracy_per_confidence[conf] = conf_accuracy
         print(f"📊 Accuracy for {conf} confidence: {conf_accuracy * 100:.2f}%")
 
     for regime in regimes.unique():
+        # Filter based on regime
         mask = regimes == regime
         regime_accuracy = accuracy_score(y_test[mask], y_pred[mask])
         accuracy_per_regime[regime] = regime_accuracy
@@ -89,3 +94,4 @@ def log_performance(accuracy, X_test, y_test, y_pred):
 
 if __name__ == "__main__":
     train_model()
+
