@@ -53,5 +53,5 @@ def run_inference():
 
     model = load_model()
     expected_cols = model.get_booster().feature_names
-    print("🔎 Model expects features:",
+    print("🔎 Model expects features:",)
 
