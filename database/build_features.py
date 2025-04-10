@@ -1,14 +1,12 @@
 import pandas as pd
 import numpy as np
-import sqlite3
-from datetime import datetime
-
-import pandas as pd
-import numpy as np
 
 # Feature calculation function
 def calculate_features(df):
     print("\n🔧 Calculating features...")
+
+    # Check columns before processing
+    print(f"🧠 Columns before processing: {df.columns}")
 
     # 1. Volatility + Regime Signals
     print("🔍 Adding Volatility and Regime features...")
@@ -27,9 +25,17 @@ def calculate_features(df):
     df['vvs_roc_5d'] = df['vvs_adj'] - df['vvs_adj'].shift(5)
     print(f"🧠 vvs_roc_5d calculated. Sample: {df['vvs_roc_5d'].head()}")
 
+    # Fill missing 'regime' data before one-hot encoding
+    print("🔍 Handling missing regime data...")
+    if 'regime' in df.columns:
+        df['regime'].fillna('calm', inplace=True)  # Fill with 'calm' or other logic
+        print(f"🧠 Missing regime values filled. Sample: {df['regime'].head()}")
+    else:
+        print("⚠️ 'regime' column missing! Adding 'calm' as default.")
+        df['regime'] = 'calm'
+
     # One-hot encoding for regime
-    df['regime'] = df['regime'].astype(str)  # Ensure it's a string before one-hot encoding
-    df = pd.get_dummies(df, columns=['regime'], drop_first=True)
+    df = pd.get_dummies(df, columns=['regime'], drop_first=True)  # One-hot encoding
     print(f"🧠 One-hot encoded regime. Columns: {df.columns}")
 
     # 2. Momentum, Price, and Volume Behavior
@@ -92,34 +98,4 @@ def calculate_features(df):
 
     print("\n🧠 Feature calculation complete!")
     return df
-
-
-# Example synthetic data for testing
-num_samples = 100  # You can set it to any number of samples you want
-synthetic_data = {
-    'vix': np.random.uniform(10, 40, num_samples),
-    'vvix': np.random.uniform(90, 150, num_samples),
-    'skew': np.random.uniform(-2, 2, num_samples),
-    'rsi': np.random.uniform(30, 70, num_samples),
-    'regime': np.random.choice(['calm', 'panic', 'transition'], num_samples),
-    'checklist_score': np.random.randint(1, 5, num_samples),
-    'vvs_roc_5d': np.random.uniform(-0.5, 0.5, num_samples),
-    'chop_flag': np.random.randint(0, 2, num_samples),
-    'outcome_class': np.random.choice([0, 1, 2], num_samples)  # Random outcome
-}
-
-df_synthetic = pd.DataFrame(synthetic_data)
-
-# Add new data to the SQL database
-conn = sqlite3.connect("signals.db")
-df_synthetic.to_sql('features_ext', conn, if_exists='append', index=False)
-conn.close()
-
-print(f"✅ Added {num_samples} synthetic samples to the database.")
-
-# Now calculate features
-df_synthetic = calculate_features(df_synthetic)
-
-# Print the final DataFrame with features
-print(df_synthetic.head())
 
