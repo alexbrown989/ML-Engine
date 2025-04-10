@@ -11,6 +11,7 @@ on:
 jobs:
   train:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -25,11 +26,11 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run training
+      - name: Run training script
         run: |
-          python train_module.py
+          python train_model.py
 
-      - name: Upload model
+      - name: Upload trained model
         uses: actions/upload-artifact@v2
         with:
           name: xgboost-model
