@@ -3,7 +3,9 @@ import pandas as pd
 import pickle
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 from datetime import datetime
 
 def train_model():
@@ -51,18 +53,20 @@ def train_model():
     # Ensure outcome_class is integer-encoded [0, 1]
     y = y.astype(int) - 1  # Assumes that outcome_class is in [1, 2] range
 
-    # Split into train and test
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    # Dynamically set the test size
+    test_size = 0.3 if len(df) < 100 else 0.2  # Adjust test size based on dataset size
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, shuffle=False)
 
     # Debug: Print shapes and a preview of the train/test sets
     print(f"📊 Training with {len(X_train)} rows, testing with {len(X_test)} rows.")
     print("\n🧠 Preview of X_train:")
     print(X_train.head())
 
-    # Train XGBoost model
+    # Train XGBoost model with class balancing
     model = xgb.XGBClassifier(
         use_label_encoder=False,
         eval_metric="mlogloss",
+        scale_pos_weight=2,  # Adjust this based on the imbalance between classes
         enable_categorical=True  # Enable categorical handling if needed
     )
 
@@ -123,11 +127,34 @@ def log_performance(accuracy, X_test, y_test, y_pred, confidence_band):
         accuracy_per_regime[regime_name] = regime_accuracy
         print(f"📊 Accuracy for {regime_name} regime: {regime_accuracy * 100:.2f}%")
 
+    # Confusion Matrix
+    cm = confusion_matrix(y_test, y_pred)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title("Confusion Matrix")
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.show()
+
+    # Feature importance plot
+    plot_feature_importance(model)
+
     # Save these logs to database or file
     with open("performance_log.txt", "a") as log:
         log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Accuracy: {accuracy * 100:.2f}%\n")
         log.write(f"Accuracy by confidence: {accuracy_per_confidence}\n")
         log.write(f"Accuracy by regime: {accuracy_per_regime}\n")
+
+
+def plot_feature_importance(model):
+    importance = model.feature_importances_
+    features = model.get_booster().feature_names
+    feature_df = pd.DataFrame({'Feature': features, 'Importance': importance})
+    feature_df = feature_df.sort_values(by='Importance', ascending=False)
+    
+    # Plot feature importance
+    feature_df.plot(kind='barh', x='Feature', y='Importance', legend=False, figsize=(10, 6))
+    plt.title("Feature Importance")
+    plt.show()
 
 if __name__ == "__main__":
     train_model()
