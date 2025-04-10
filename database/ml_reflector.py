@@ -5,6 +5,7 @@ from datetime import datetime
 def run_reflection():
     print(f"\n🪞 Starting reflection engine @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+    # Connect to the database
     conn = sqlite3.connect("signals.db")
 
     # Load predictions
@@ -27,7 +28,7 @@ def run_reflection():
         FROM signals
     """, conn)
 
-    # Merge all
+    # Merge predictions, labels, and additional signal info
     df = preds.merge(labels, on="signal_id", how="inner")
     df = df.merge(signals, on="signal_id", how="left")
 
@@ -41,11 +42,11 @@ def run_reflection():
     df["is_correct"] = (df["prediction"] == df["outcome_class"]).astype(int)
     df["reflect_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Show preview
+    # Show preview of the reflections
     print("🔎 Sample reflection results:")
     print(df[["signal_id", "prediction", "outcome_class", "is_correct", "confidence", "confidence_band", "regime"]].head())
 
-    # Create table if not exists
+    # Create reflections table if not exists
     conn.execute("""
         CREATE TABLE IF NOT EXISTS reflections (
             signal_id INTEGER PRIMARY KEY,
@@ -88,3 +89,4 @@ def run_reflection():
 
 if __name__ == "__main__":
     run_reflection()
+
