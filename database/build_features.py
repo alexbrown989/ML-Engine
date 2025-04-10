@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import sqlite3  # Ensure sqlite3 is imported
+import sqlite3
 from datetime import datetime
 
 # Feature calculation function
@@ -21,16 +21,16 @@ def calculate_features(df):
     df = pd.get_dummies(df, columns=['regime'], drop_first=True)
     print(f"🧠 One-hot encoded regime. Columns: {df.columns}")
 
-    # Ensure all numerical features are numeric
-    df['vix'] = pd.to_numeric(df['vix'], errors='coerce')
-    df['vvix'] = pd.to_numeric(df['vvix'], errors='coerce')
-    df['skew'] = pd.to_numeric(df['skew'], errors='coerce')
-
     # Handle missing columns like regime_calm, regime_panic, regime_transition
     for regime in ['regime_calm', 'regime_panic', 'regime_transition']:
         if regime not in df.columns:
             df[regime] = np.nan  # Or fill with 0 if you prefer
     print(f"🧠 Missing regime features handled. Columns: {df.columns}")
+
+    # Ensure all numerical features are numeric
+    df['vix'] = pd.to_numeric(df['vix'], errors='coerce')
+    df['vvix'] = pd.to_numeric(df['vvix'], errors='coerce')
+    df['skew'] = pd.to_numeric(df['skew'], errors='coerce')
 
     # 2. Volatility + Regime Signals
     print("🔍 Adding Volatility and Regime features...")
