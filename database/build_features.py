@@ -1,26 +1,21 @@
-# Rewritten build_features.py
+# === build_features.py ===
 import pandas as pd
 import numpy as np
-
 
 def calculate_features(df):
     print("\n🔧 Calculating features...")
 
-    # --- Ensure 'regime' exists as raw str column
+    # Ensure 'regime' exists as a string column
     if 'regime' not in df.columns or df['regime'].isnull().all():
-        print("[WARN] Regime column not found or is all NaN. Defaulting to 'calm'.")
+        print("[WARN] Regime column not found or all NaN. Defaulting to 'calm'.")
         df['regime'] = 'calm'
     df['regime'] = df['regime'].fillna('calm').astype(str)
 
-    # --- Convert necessary columns to numeric safely ---
-    for col in ['vix', 'vvix', 'skew', 'rsi']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        else:
-            print(f"[WARN] '{col}' not in DataFrame. Creating as NaN.")
-            df[col] = np.nan
+    df['vix'] = pd.to_numeric(df['vix'], errors='coerce')
+    df['vvix'] = pd.to_numeric(df['vvix'], errors='coerce')
+    df['skew'] = pd.to_numeric(df['skew'], errors='coerce')
+    df['rsi'] = pd.to_numeric(df['rsi'], errors='coerce')
 
-    # --- Feature Calculations ---
     df['skew_normalized'] = (df['skew'] - df['skew'].rolling(30).mean()) / df['skew'].rolling(30).std()
     df['vvs_adj'] = (df['vix'] + df['vvix']) / df['skew_normalized']
     df['vvs_roc_5d'] = df['vvs_adj'] - df['vvs_adj'].shift(5)
@@ -41,16 +36,15 @@ def calculate_features(df):
         labels=['LOW', 'MEDIUM', 'HIGH']
     )
 
-    # --- Core model features ---
+    # Model-dependent features
     df['checklist_score'] = 3
     df['chop_flag'] = np.random.randint(0, 2, len(df))
 
-    # One-hot encode regime but preserve original
+    # Add regime one-hot encoding
     df = pd.get_dummies(df, columns=['regime'], prefix='regime', drop_first=False)
 
-    # Final fill for any remaining NaNs
+    # Final safety
     df.fillna(df.mean(numeric_only=True), inplace=True)
-
     return df
 
 
