@@ -1,72 +1,60 @@
+# database/backtest_model.py
+
 import os
 import sys
-
-# Fix path so you can import from sibling modules in 'database'
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
 
 from database.build_features import calculate_features
 from database.inference import load_latest_model, generate_predictions
 
-
-# === BACKTEST CONFIG === #
 TICKER = "AAPL"
 DAYS_BACK = 60
 
-# === BACKTEST FUNCTION === #
 def backtest():
-    print(f"Starting backtest for {TICKER}...")
+    print(f"\n🚀 Starting backtest for {TICKER}...")
+
     end_date = datetime.today()
     start_date = end_date - timedelta(days=DAYS_BACK)
 
-    # Download historical OHLCV data
     df = yf.download(TICKER, start=start_date, end=end_date)
 
-    # Ensure DataFrame is not empty
     if df.empty:
-        print("❌ Failed to fetch data. Exiting.")
+        print("❌ No data returned. Check ticker or date range.")
         return
 
-    # Add dummy entry_price column (you can improve this to realistic fills)
     df['entry_price'] = df['Open'].shift(-1)
 
-    # Make MultiIndex explicit (simulate realistic complex dataset)
-    df.columns = pd.MultiIndex.from_product([["Price"], df.columns])
-    print("\n\U0001F9E0 Columns before processing:")
-    print(df.columns)
+    # Flatten MultiIndex to simple columns
+    df.columns = ['_'.join(filter(None, map(str, col))).lower() if isinstance(col, tuple) else col.lower() for col in df.columns]
+    print("\n🧠 Columns before feature calc:", df.columns.tolist())
 
-    # Flatten column names cleanly
-    df.columns = ['_'.join(filter(None, map(str, col))).lower() for col in df.columns]
-
-    # Feature engineering
-    print("\n🔧 Calculating features...")
+    print("🔧 Calculating features...")
     df = calculate_features(df)
-
-    # Drop rows with NA from recent indicator calcs
     df.dropna(inplace=True)
 
-    # Load model
     model, expected_features = load_latest_model()
     if model is None:
-        print("❌ No model found. Train one first.")
+        print("❌ No trained model found.")
         return
 
-    # Ensure all required features are present
     for feature in expected_features:
         if feature not in df.columns:
-            print(f"⚠️ Missing expected feature: {feature}. Adding NaNs.")
+            print(f"⚠️ Missing feature: {feature}. Filling with NaN.")
             df[feature] = pd.NA
 
     df = df[expected_features].copy()
     df.fillna(0, inplace=True)
 
-    # Run inference
     print("\n🔮 Generating predictions...")
     preds = generate_predictions(model, df)
-    df['prediction'] = preds
+    df = df.join(preds)
 
-    print("\n📊 Backtest complete. Sample predictions:")
-    print(df[['prediction']].tail())
+    print("\n📊 Top Predictions:")
+    print(df[['prediction', 'confidence']].sort_values(by='confidence', ascending=False).head(5))
 
-# === ENTRY POINT === #
 if __name__ == "__main__":
     backtest()
+
