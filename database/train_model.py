@@ -17,7 +17,7 @@ def train_model():
     df['outcome_class'] = pd.to_numeric(df['outcome_class'], errors='coerce')
     df.dropna(subset=['outcome_class'], inplace=True)
 
-    y = df['outcome_class'].astype(int) - 1
+    y = df['outcome_class'].astype(int)
     X = df.drop(columns=['outcome_class'])
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=True, random_state=42)
