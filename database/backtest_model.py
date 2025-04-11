@@ -328,11 +328,22 @@ def backtest():
     if extra_features:
         print(f"[DEBUG] The following columns are in the DataFrame but not expected by the model (will be kept for now): {extra_features}")
 
-    # --- Handle Remaining NaNs in Feature Columns ---
+        # --- Handle Remaining NaNs in Feature Columns ---
     # Option 1: Drop rows with NaNs in expected features (might lose data)
     # Option 2: Impute NaNs (e.g., with 0, mean, median)
     print("\n[INFO] Handling NaNs in expected feature columns...")
-    print(f"[DEBUG] NaN counts in expected features before final handling:\n{df[expected_features].isnull().sum().sort_values(ascending=False).head(15)}")
+    features_to_check_for_na = [f for f in expected_features if f in df.columns] # Only check cols that actually exist
+    
+    # --- INSERT DEBUG PRINTS HERE ---
+    print("[DEBUG] DataFrame columns before final dropna:")
+    print(df.columns.tolist())
+    print(f"[DEBUG] NaN counts for expected features subset ({len(features_to_check_for_na)} features):")
+    # Only print NaN counts for features we are actually checking/dropping based on
+    if features_to_check_for_na: 
+         print(df[features_to_check_for_na].isnull().sum().sort_values(ascending=False).head(15))
+    else:
+         print("[DEBUG] No expected features found in DataFrame columns to check for NaNs.")
+    # --- END DEBUG PRINTS ---
 
     # Using dropna for simplicity, as in original logic. Consider imputation if data loss is too high.
     initial_rows = len(df)
