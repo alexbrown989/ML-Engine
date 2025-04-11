@@ -4,72 +4,64 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 from xgboost import XGBClassifier
 import pickle
-from datetime import datetime
 
 def train_model():
-    print(f"\n🔄 Starting model training @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
     conn = sqlite3.connect("signals.db")
-    
-    # Load data
-    df = pd.read_sql_query("""SELECT * FROM features WHERE outcome_class IS NOT NULL""", conn)
+    df = pd.read_sql_query("SELECT * FROM features_ext", conn)  # Make sure to get the right table
     conn.close()
 
+    df = df[df["outcome_class"].notna()]
+    df["outcome_class"] = df["outcome_class"].astype(int)
+
+    print("✅ Raw outcome_class counts:")
+    print(df["outcome_class"].value_counts(), "\n")
+
+    if "vvs_roc_5d" in df.columns:
+        df = df.drop(columns=["vvs_roc_5d"])
+
+    df = df.dropna()
+    print("🔍 Missing values per column:")
+    print(df.isnull().sum())
+
     if df.empty:
-        print("❌ No data to train on. Exiting.")
+        print("❌ No data left to train on after filtering. Exiting.")
         return
 
-    # Preparing features and target
-    X = df.drop(columns=["signal_id", "outcome_class"])
     y = df["outcome_class"]
+    X = df.drop(columns=["signal_id", "outcome_class"])
 
-    # Ensure outcome_class is integer-encoded [0, 1]
-    y = y.astype(int) - 1  # Assumes that outcome_class is in [1, 2] range
+    if "regime" in X.columns:
+        X = pd.get_dummies(X, columns=["regime"])
 
-    # Split into train and test
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
 
-    print(f"📊 Training with {len(X_train)} rows, testing with {len(X_test)} rows.")
+    print("\n📊 y_train distribution:")
+    print(y_train.value_counts())
 
-    # Train XGBoost model
+    print("\n📊 y_test distribution:")
+    print(y_test.value_counts())
+
     model = XGBClassifier(
-        use_label_encoder=False,
-        eval_metric="mlogloss"
+        objective="multi:softmax",
+        num_class=3,
+        eval_metric="mlogloss",
+        use_label_encoder=False
     )
     model.fit(X_train, y_train)
 
-    # Get predicted probabilities and calculate confidence band
-    y_pred_proba = model.predict_proba(X_test)
-    
-    # Calculate confidence bands using np.select
-    probabilities_class1 = y_pred_proba[:, 1]  # Probabilities for the positive class
+    y_pred = model.predict(X_test)
 
-    conditions = [
-        probabilities_class1 < 0.50,                         # Condition for LOW
-        (probabilities_class1 >= 0.50) & (probabilities_class1 < 0.80), # Condition for MEDIUM
-        probabilities_class1 >= 0.80                          # Condition for HIGH
-    ]
-    choices = ['LOW', 'MEDIUM', 'HIGH'] # Corresponding category for each condition
+    print("\n🧪 Evaluation:")
+    print(classification_report(y_test, y_pred, zero_division=0))
+    print("🎯 Accuracy:", round(accuracy_score(y_test, y_pred) * 100, 2), "%")
 
-    X_test['confidence_band'] = np.select(conditions, choices, default='UNKNOWN')
-
-    # Derive y_pred from probabilities (0 if proba < 0.5, 1 if proba >= 0.5)
-    y_pred = (y_pred_proba[:, 1] >= 0.5).astype(int)
-
-    # Evaluate model performance
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"🎯 Accuracy after retraining: {accuracy * 100:.2f}%")
-
-    # Save the new model
-    model_filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
-    with open(model_filename, "wb") as f:
+    with open("model_xgb.pkl", "wb") as f:
         pickle.dump(model, f)
-    print(f"✅ New model saved as {model_filename}")
-
-    # Optionally, log retraining metrics
-    with open("retraining_log.txt", "a") as log:
-        log.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Accuracy: {accuracy * 100:.2f}%\n")
+    print("✅ Model trained and saved as model_xgb.pkl")
 
 if __name__ == "__main__":
     train_model()
+
 
