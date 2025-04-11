@@ -1,4 +1,7 @@
-# --- Feature Engineering ---
+import pandas as pd
+import numpy as np
+
+
 def calculate_features(df):
     print("\n🔧 Calculating features...")
 
