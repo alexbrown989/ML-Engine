@@ -1,15 +1,12 @@
 import os
 import sys
-from datetime import datetime, timedelta
-import yfinance as yf
-import pandas as pd
-import numpy as np
 
-# 🛠 Fix the import path
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+# Fix path so you can import from sibling modules in 'database'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from database.build_features import calculate_features
 from database.inference import load_latest_model, generate_predictions
+
 
 # === BACKTEST CONFIG === #
 TICKER = "AAPL"
