@@ -1,7 +1,8 @@
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
-from database.build_features import calculate_features
+from build_features import calculate_features
+
 
 
 def backtest():
