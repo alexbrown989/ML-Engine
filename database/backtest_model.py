@@ -1,62 +1,48 @@
-# database/backtest_model.py
-
 import yfinance as yf
 import pandas as pd
+import numpy as np
+import sys, os
 from datetime import datetime, timedelta
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from database.build_features import calculate_features
-from database.inference import load_latest_model, generate_predictions
+from database.inference import load_model_and_features, generate_predictions
 
 
-def fetch_macro_index(symbol, start, end):
-    data = yf.download(symbol, start=start, end=end, progress=False)["Close"]
-    return data.rename(symbol)
-
-
-def backtest(ticker="AAPL"):
+def backtest(ticker="AAPL", lookback_days=60):
     print(f"Starting backtest for {ticker}...")
 
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=60)
+    end = datetime.today()
+    start = end - timedelta(days=lookback_days)
 
-    df = yf.download(ticker, start=start_date, end=end_date, progress=False)[
-        ["Close", "High", "Low", "Open", "Volume"]
-    ]
-    df["entry_price"] = df["Close"].shift(-1)
+    df = yf.download(ticker, start=start.strftime('%Y-%m-%d'), end=end.strftime('%Y-%m-%d'))
+
+    if df.empty:
+        print(f"❌ No data downloaded for {ticker}.")
+        return
+
+    df["entry_price"] = df["Close"]  # Dummy entry price for now
 
     print("\n🧠 Columns before processing:")
     print(df.columns)
 
-    # Flatten MultiIndex if needed
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [f"{col[0].lower()}_{ticker}" for col in df.columns]
-    else:
-        df.columns = [col.lower() + f"_{ticker}" for col in df.columns]
+    df.columns = [f"{col.lower()}_{ticker}" if col != "entry_price" else "entry_price" for col in df.columns]
 
-    # Add macro fear indicators
-    vix = fetch_macro_index("^VIX", start_date, end_date)
-    vvix = fetch_macro_index("^VVIX", start_date, end_date)
-    skew = fetch_macro_index("^SKEW", start_date, end_date)
-
-    df = df.merge(vix, left_index=True, right_index=True, how="left")
-    df = df.merge(vvix, left_index=True, right_index=True, how="left")
-    df = df.merge(skew, left_index=True, right_index=True, how="left")
-
-    df.rename(columns={"^VIX": "vix", "^VVIX": "vvix", "^SKEW": "skew"}, inplace=True)
-
+    # Feature engineering
     print("\n🔧 Calculating features...")
     df = calculate_features(df)
 
-    print("\n🔍 Dropping rows with missing entry price...")
-    df = df.dropna(subset=["entry_price"])
+    # Predict
+    print("\n🧠 Generating predictions...")
+    model, required_features = load_model_and_features()
+    df_preds = generate_predictions(df, model, required_features)
 
-    print("\n🧠 Running inference...")
-    model = load_latest_model()
-    preds = generate_predictions(model, df)
+    print("\n🔍 Sample predictions:")
+    print(df_preds[["prediction", "confidence", "confidence_band"]].head())
 
-    print("\n🔍 Final predictions:")
-    print(preds[["prediction", "confidence"]].head())
+    print("\n✅ Backtest complete.")
 
 
 if __name__ == "__main__":
     backtest()
-
