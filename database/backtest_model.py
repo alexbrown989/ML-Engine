@@ -82,7 +82,8 @@ def backtest():
             df[col_name] = np.nan
 
     # RSI
-    close_col = f"{TICKER.lower()}_close"
+    close_col = f"close_{TICKER.lower()}"
+
     if close_col in df:
         df['rsi'] = compute_rsi(df[close_col], window=RSI_WINDOW)
     else:
