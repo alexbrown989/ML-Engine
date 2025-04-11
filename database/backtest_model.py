@@ -1,11 +1,11 @@
 import os
 import sys
+from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 
-# === PATCH PATH === #
+# === PATCH IMPORT PATH === #
 script_dir = os.path.dirname(__file__)
 project_root = os.path.abspath(os.path.join(script_dir, '..'))
 if project_root not in sys.path:
@@ -15,10 +15,11 @@ try:
     from build_features import calculate_features
     from inference import load_model_and_features, generate_predictions
 except ImportError as e:
-    print(f"❌ Import error: {e}\n   Check relative paths or sys.path setup.")
+    print(f"❌ Error importing project modules: {e}")
+    print(f"   Check if build_features.py and inference.py are in the correct location relative to {script_dir}")
+    print(f"   Project root added to path: {project_root}")
     sys.exit(1)
 
-# === CONFIG === #
 TICKER = "AAPL"
 EXTERNAL_TICKERS = {
     "^VIX": "vix",
@@ -27,7 +28,6 @@ EXTERNAL_TICKERS = {
 }
 DAYS_BACK = 60
 
-# === UTILS === #
 def compute_rsi(series, window=14):
     delta = series.diff()
     gain = delta.clip(lower=0)
@@ -38,51 +38,53 @@ def compute_rsi(series, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-# === BACKTEST === #
 def backtest():
     print(f"Starting backtest for {TICKER}...")
     end_date = datetime.today()
     start_date = end_date - timedelta(days=DAYS_BACK + 15)
 
-    # Primary ticker
-    df = yf.download(TICKER, start=start_date, end=end_date, progress=False, auto_adjust=True)
-    if df.empty:
-        print("❌ Primary ticker returned empty DataFrame.")
+    print(f"\nDownloading data for primary ticker: {TICKER}...")
+    try:
+        df = yf.download(TICKER, start=start_date, end=end_date, progress=False, group_by='ticker', auto_adjust=True)
+    except Exception as e:
+        print(f"❌ Failed to download data for {TICKER}: {e}")
         return
 
-    # Flatten columns
+    if df.empty:
+        print(f"❌ No data returned for {TICKER}. Exiting.")
+        return
+
     print("🔧 Flattening primary ticker columns...")
     if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [
-            f"{str(col[0]).lower()}_{str(col[1]).lower()}"
-            if not str(col[0]).lower() == str(col[1]).lower()
-            else str(col[1]).lower()
-            for col in df.columns
-        ]
+        df.columns = [f"{col[0].lower()}_{col[1].lower()}" for col in df.columns]
     else:
-        df.columns = [col.lower() for col in df.columns]
+        df.columns = [f"{TICKER.lower()}_{col.lower()}" for col in df.columns]
     print(f"🧠 Columns after flattening: {df.columns.tolist()}")
 
-    # External data joins
-    for symbol, col_name in EXTERNAL_TICKERS.items():
-        print(f"\nDownloading {symbol} as '{col_name}'...")
+    for ticker_symbol, col_name in EXTERNAL_TICKERS.items():
+        print(f"\nDownloading {ticker_symbol} as '{col_name}'...")
         try:
-            ext = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=True)
-            if ext.empty:
-                raise ValueError("Empty")
-            ext_col = ext['Close'] if 'Close' in ext.columns else None
-            if ext_col is None:
-                raise KeyError("Missing Close")
-            df[col_name] = ext_col
+            ext_data = yf.download(ticker_symbol, start=start_date, end=end_date, progress=False, auto_adjust=True)
+            if ext_data.empty:
+                raise ValueError("No data")
+            if isinstance(ext_data.columns, pd.MultiIndex):
+                ticker_key = ext_data.columns.levels[0][0]
+                close_series = ext_data[(ticker_key, 'Close')]
+            else:
+                close_series = ext_data['Close']
+            close_series.name = col_name
+            df = df.join(close_series, how='left')
         except Exception as e:
-            print(f"⚠️ Join failed for {symbol}: '{col_name}'. Setting {col_name} to NaN.")
+            print(f"⚠️ Join failed for {ticker_symbol}: '{col_name}'. Setting {col_name} to NaN.")
             df[col_name] = np.nan
 
-    # entry price
-    open_col = f"{TICKER.lower()}_open"
-    df['entry_price'] = df[open_col].shift(-1) if open_col in df.columns else np.nan
+    open_col_name = f"{TICKER.lower()}_open"
+    if open_col_name in df.columns:
+        df['entry_price'] = df[open_col_name].shift(-1)
+    else:
+        print(f"⚠️ Could not find '{open_col_name}' column. Setting entry_price to NaN.")
+        df['entry_price'] = np.nan
 
-    # Inject RSI before calling calculate_features
     close_col = f"{TICKER.lower()}_close"
     if close_col in df.columns:
         df['rsi'] = compute_rsi(df[close_col])
@@ -100,7 +102,7 @@ def backtest():
 
     df.dropna(inplace=True)
     if df.empty:
-        print("❌ All rows dropped during feature cleanup.")
+        print("❌ DataFrame empty after cleaning.")
         return
 
     try:
@@ -109,28 +111,34 @@ def backtest():
         print(f"❌ Model load failed: {e}")
         return
 
-    # Align columns
-    for feat in expected_features:
-        if feat not in df.columns:
-            print(f"⚠️ Adding missing feature '{feat}' as 0")
+    missing = [feat for feat in expected_features if feat not in df.columns]
+    if missing:
+        print(f"⚠️ Missing features: {missing}. Filling with 0.")
+        for feat in missing:
             df[feat] = 0
 
-    df = df[expected_features].copy()
-    df.fillna(0, inplace=True)
+    X = df[expected_features].copy()
+    if X.isnull().any().any():
+        print("⚠️ NaNs detected before prediction. Filling with 0.")
+        X.fillna(0, inplace=True)
 
-    # Predict
     print("\n🔮 Generating predictions...")
     try:
-        preds = generate_predictions(model, df)
-        df['prediction'] = preds['prediction']
-        df['confidence'] = preds['confidence']
+        preds = generate_predictions(model, X)
     except Exception as e:
-        print(f"❌ Prediction error: {e}")
+        print(f"❌ Prediction failed: {e}")
         return
 
+    df['prediction'] = preds['prediction']
+    df['confidence'] = preds['confidence']
+
+    cols_to_display = ['prediction', 'confidence']
+    if close_col in df.columns:
+        cols_to_display.insert(0, close_col)
     print("\n📊 Sample predictions:")
-    print(df[['prediction', 'confidence']].tail())
+    print(df[cols_to_display].tail())
     print("\n✅ Backtest complete.")
 
 if __name__ == "__main__":
     backtest()
+
