@@ -1,60 +1,52 @@
-import yfinance as yf
+# database/backtest_model.py
+
 import pandas as pd
+import yfinance as yf
 from datetime import datetime, timedelta
-from build_features import calculate_features
 from inference import load_latest_model, generate_predictions
+from build_features import calculate_features
+from sklearn.metrics import classification_report, confusion_matrix
 
-# --- Config ---
-TICKER = "AAPL"
-LOOKBACK_DAYS = 60
-ENTRY_THRESHOLD = 0.7  # Confidence threshold for simulated entry
+def backtest(ticker="AAPL"):
+    print(f"Starting backtest for {ticker}...")
 
-
-def backtest():
-    print(f"Starting backtest for {TICKER}...")
     end_date = datetime.today()
-    start_date = end_date - timedelta(days=LOOKBACK_DAYS)
+    start_date = end_date - timedelta(days=60)
 
-    print(f"Fetching data for {TICKER} from {start_date.date()} to {end_date.date()}")
-    df = yf.download(TICKER, start=start_date, end=end_date)
-    if df.empty:
-        print("❌ Failed to fetch data.")
-        return
+    df = yf.download(ticker, start=start_date, end=end_date)
+    df["entry_price"] = df["Open"]
 
-    df['entry_price'] = df['Close']  # Simulate synthetic entry price
-    df.reset_index(inplace=True)  # Ensure 'Date' becomes a column
+    # 👇 Fix column format
+    df.columns = ['_'.join([str(c) for c in col if c]) if isinstance(col, tuple) else str(col) for col in df.columns]
+    print(f"\n🧠 Columns before processing:\n{df.columns}")
 
-    print("\n🧠 Columns before MultiIndex:")
-    print(df.columns)
-
-    # Simulate a MultiIndex structure and flatten it
-    df.columns = pd.MultiIndex.from_tuples([(col, TICKER if col != 'Date' else '') for col in df.columns])
-    df.columns = ['_'.join(filter(None, col)).strip() for col in df.columns.values]
-
-    # Calculate features from raw price + entry
     df = calculate_features(df)
-
-    # Drop any rows with missing required fields
-    df.dropna(inplace=True)
-
-    # Load model
     model = load_latest_model()
-    if not model:
-        print("❌ No model found.")
+
+    if model is None:
+        print("❌ Model not loaded. Exiting.")
         return
 
-    # Generate predictions
-    pred_df = generate_predictions(model, df)
+    df = generate_predictions(model, df)
 
-    # Entry logic
-    pred_df['signal'] = pred_df['confidence'].apply(lambda x: 'ENTER' if x >= ENTRY_THRESHOLD else 'WAIT')
+    # 🎯 Print prediction samples
+    print("\n🔍 Predictions preview:")
+    print(df[['prediction', 'confidence']].head())
 
-    print("\n🔍 Entry recommendations:")
-    print(pred_df[['timestamp', 'confidence', 'prediction', 'signal']].head(10))
+    # Metrics only if labels are present
+    if 'outcome_class' in df.columns:
+        print("\n📊 Classification Report:")
+        print(classification_report(df['outcome_class'], df['prediction'], zero_division=0))
 
-    # Strategy performance backtesting logic would go here (P/L, drawdown, etc.)
-    print("\n🎯 Backtest completed.")
+        print("\n📉 Confusion Matrix:")
+        print(confusion_matrix(df['outcome_class'], df['prediction']))
 
+        print("\n🧠 Accuracy by regime:")
+        if 'regime' in df.columns:
+            for regime in df['regime'].unique():
+                sub = df[df['regime'] == regime]
+                acc = (sub['prediction'] == sub['outcome_class']).mean()
+                print(f"  - {regime}: {acc:.2%}")
 
 if __name__ == "__main__":
     backtest()
