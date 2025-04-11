@@ -4,8 +4,6 @@ from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import yfinance as yf
-import pandas as pd
 from datetime import datetime, timedelta
 from database.build_features import calculate_features
 from database.inference import load_latest_model, generate_predictions
