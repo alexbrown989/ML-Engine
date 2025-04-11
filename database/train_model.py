@@ -1,5 +1,6 @@
 # /workspaces/ML-Engine/database/train_model.py
 
+import os
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -8,6 +9,28 @@ from datetime import datetime
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+
+MODEL_DIR = "models"
+MAX_MODELS = 5
+
+def save_model(model):
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
+    filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
+    path = os.path.join(MODEL_DIR, filename)
+    with open(path, "wb") as f:
+        pickle.dump(model, f)
+
+    print(f"✅ Model saved: {path}")
+
+    # Cleanup old models
+    all_models = sorted(
+        [f for f in os.listdir(MODEL_DIR) if f.endswith(".pkl")],
+        reverse=True
+    )
+    for old_model in all_models[MAX_MODELS:]:
+        os.remove(os.path.join(MODEL_DIR, old_model))
+        print(f"🗑️ Deleted old model: {old_model}")
 
 def train_model():
     print(f"\n🔄 Training model at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -22,28 +45,21 @@ def train_model():
 
     print("\n🧠 Column types before preprocessing:")
     print(df.dtypes)
-
     print("\n🔍 Missing values per column:")
     print(df.isnull().sum())
 
-    # Ensure regime exists and is categorical
-    if "regime" not in df.columns:
-        print("⚠️ 'regime' column missing! Adding default 'calm'")
-        df["regime"] = "calm"
+    df["regime"] = df.get("regime", "calm")
     df["regime"] = df["regime"].astype("category")
 
-    # Make sure vvs_roc_5d is numeric
     df["vvs_roc_5d"] = pd.to_numeric(df["vvs_roc_5d"], errors="coerce")
     df["vvs_roc_5d"].fillna(df["vvs_roc_5d"].mean(numeric_only=True), inplace=True)
 
     print("\n🔍 Column types after cleaning:")
     print(df.dtypes)
 
-    # Prepare features and label
-    X = df.drop(columns=["outcome_class"])  # no 'signal_id' present
+    X = df.drop(columns=["outcome_class"])
     y = df["outcome_class"].astype(int)
 
-    # Split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
 
     print(f"\n📊 Training on {len(X_train)} rows, testing on {len(X_test)} rows")
@@ -61,10 +77,8 @@ def train_model():
     accuracy = accuracy_score(y_test, y_pred)
     print(f"🎯 Model accuracy: {accuracy * 100:.2f}%")
 
-    filename = f"model_xgb_{datetime.now().strftime('%Y%m%d%H%M%S')}.pkl"
-    with open(filename, "wb") as f:
-        pickle.dump(model, f)
-    print(f"✅ Model saved: {filename}")
+    save_model(model)
 
 if __name__ == "__main__":
     train_model()
+
