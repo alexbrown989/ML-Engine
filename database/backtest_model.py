@@ -1,12 +1,12 @@
+# Final version of database/backtest_model.py (patched for regime encoding fix)
 import os
 import sys
 from datetime import datetime, timedelta
-import traceback
-import numpy as np
-import pandas as pd
 import yfinance as yf
+import pandas as pd
+import numpy as np
+import traceback
 
-# --- Configuration ---
 TICKER = "AAPL"
 EXTERNAL_TICKERS = {
     "^VIX": "vix",
@@ -16,106 +16,103 @@ EXTERNAL_TICKERS = {
 DAYS_BACK = 365
 RSI_WINDOW = 14
 
-# --- Setup Paths ---
 try:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, '..'))
     if project_root not in sys.path:
         print(f"[INFO] Adding project root to path: {project_root}")
         sys.path.append(project_root)
-except Exception:
-    print("[WARN] Could not determine script directory.")
+except NameError:
+    print("[WARN] Could not automatically determine project root.")
+    script_dir = "."
 
-# --- Import Project Modules ---
 try:
     from build_features import calculate_features
     from inference import load_model_and_features, generate_predictions
     print("[INFO] Successfully imported custom modules.")
-except Exception as e:
-    print(f"[ERROR] Import failed: {e}")
+except ImportError as e:
+    print(f"[ERROR] Import issue: {e}")
     sys.exit(1)
 
-# --- RSI Helper ---
-def compute_rsi(series, window=14):
+
+def compute_rsi(series: pd.Series, window: int = 14) -> pd.Series:
     delta = series.diff()
     gain = delta.clip(lower=0).fillna(0)
     loss = -delta.clip(upper=0).fillna(0)
-    avg_gain = gain.rolling(window).mean()
-    avg_loss = loss.rolling(window).mean()
+    avg_gain = gain.rolling(window=window, min_periods=window).mean()
+    avg_loss = loss.rolling(window=window, min_periods=window).mean()
     rs = np.where(avg_loss == 0, np.inf, avg_gain / avg_loss)
     rsi = 100 - (100 / (1 + rs))
     rsi[np.isinf(rs) & (avg_gain > 0)] = 100
     rsi[np.isinf(rs) & (avg_gain == 0)] = 50
-    rsi = pd.Series(rsi, index=series.index, name="rsi")
+    rsi = pd.Series(rsi, index=series.index)
     rsi.iloc[:window] = np.nan
     return rsi
 
-# --- Column Matching ---
-def find_column(df, patterns):
-    for col in df.columns:
-        for p in patterns:
-            if p.lower() in str(col).lower():
-                return col
-    return None
 
-# --- Backtest Main ---
 def backtest():
     print("\n==================== Starting Backtest ====================")
     print(f"[INFO] Downloading {TICKER} data...")
-    end = datetime.today()
-    start = end - timedelta(days=DAYS_BACK + 50)
+    end_date = datetime.today()
+    start_date = end_date - timedelta(days=DAYS_BACK + 50)
 
     try:
-        df = yf.download(TICKER, start=start, end=end, auto_adjust=True, progress=False)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = [f"{a.lower()}_{b.lower()}" for a, b in df.columns]
-        else:
-            df.columns = [f"{col.lower()}_{TICKER.lower()}" for col in df.columns]
+        df = yf.download(TICKER, start=start_date, end=end_date, progress=False, auto_adjust=True)
+        if df.empty:
+            print("[ERROR] Ticker data is empty.")
+            return
+        df.columns = [f"{col.lower()}_{TICKER.lower()}" for col in df.columns]
         print(f"[DEBUG] Flattened columns: {df.columns.tolist()}")
     except Exception as e:
-        print(f"[ERROR] Failed to download primary data: {e}")
+        print(f"[ERROR] Failed to fetch ticker: {e}")
         return
 
-    for symbol, name in EXTERNAL_TICKERS.items():
-        print(f"[INFO] Downloading {symbol} as '{name}'...")
+    for ext_symbol, col_name in EXTERNAL_TICKERS.items():
+        print(f"[INFO] Downloading {ext_symbol} as '{col_name}'...")
         try:
-            ext = yf.download(symbol, start=start, end=end, auto_adjust=True, progress=False)
-            if isinstance(ext.columns, pd.MultiIndex):
-                col = find_column(ext, ['close'])
+            ext_data = yf.download(ext_symbol, start=start_date, end=end_date, progress=False, auto_adjust=True)
+            close_col = next((c for c in ext_data.columns if c[0].lower() == 'close' or c == 'Close'), None)
+            if isinstance(close_col, tuple):
+                df[col_name] = ext_data[close_col]
             else:
-                col = 'close'
-            df[name] = ext[col] if col in ext.columns else np.nan
-        except Exception as e:
-            print(f"[WARN] Failed to fetch {symbol}: {e}. Setting {name} to NaN.")
-            df[name] = np.nan
+                df[col_name] = ext_data['Close']
+        except Exception:
+            df[col_name] = np.nan
 
-    close_col = find_column(df, [f"close_{TICKER.lower()}"])
-    if close_col:
+    close_col = f"close_{TICKER.lower()}"
+    open_col = f"open_{TICKER.lower()}"
+    if close_col in df.columns:
         df['rsi'] = compute_rsi(df[close_col], RSI_WINDOW)
     else:
-        print("[ERROR] aapl_close not found. Cannot compute RSI.")
+        print(f"[ERROR] {close_col} not found. Cannot compute RSI.")
         return
 
-    open_col = find_column(df, [f"open_{TICKER.lower()}"])
-    if open_col:
+    if open_col in df.columns:
         df['entry_price'] = df[open_col].shift(-1)
+    else:
+        df['entry_price'] = np.nan
 
     df.fillna(method='ffill', inplace=True)
     df.fillna(method='bfill', inplace=True)
 
     print("[INFO] Calculating features...")
-    try:
-        df = calculate_features(df)
-    except Exception as e:
-        print(f"[ERROR] Feature calculation failed: {e}")
-        return
+    df = calculate_features(df)
 
     print("[INFO] Loading model...")
     try:
         model, expected_features = load_model_and_features()
+        print(f"🧠 Loaded model: models/model_xgb_20250411044311.pkl with {len(expected_features)} features")
     except Exception as e:
-        print(f"[ERROR] Model load failed: {e}")
+        print(f"[ERROR] Failed to load model: {e}")
         return
+
+    # Replace 'regime' with one-hot cols if needed
+    if 'regime' in expected_features:
+        onehot_regimes = [col for col in df.columns if col.startswith('regime_')]
+        if onehot_regimes:
+            expected_features.remove('regime')
+            expected_features += onehot_regimes
+            print(f"[DEBUG] Replaced 'regime' with one-hot columns: {onehot_regimes}")
 
     for col in expected_features:
         if col not in df:
@@ -126,13 +123,26 @@ def backtest():
         print("[ERROR] DataFrame is empty after dropna.")
         return
 
-    preds = generate_predictions(model, df[expected_features])
-    df['prediction'] = preds['prediction']
-    df['confidence'] = preds.get('confidence', np.nan)
+    df_predict = df[expected_features].copy()
 
-    print("\n📊 Final Predictions:")
-    print(df[['prediction', 'confidence']].tail())
-    print("\n✅ Backtest complete.")
+    try:
+        preds = generate_predictions(model, df_predict)
+        df['prediction'] = preds['prediction']
+        df['confidence'] = preds.get('confidence', np.nan)
+    except Exception as e:
+        print(f"[ERROR] Prediction failed: {e}")
+        return
+
+    print("\n📊 Sample Predictions:")
+    print(df[[close_col, 'prediction', 'confidence']].tail())
+
+    print("\n==================== Backtest Complete ====================")
+
 
 if __name__ == "__main__":
-    backtest()
+    try:
+        backtest()
+    except Exception as e:
+        print(f"[FATAL] Crash: {e}")
+        traceback.print_exc()
+        sys.exit(1)
