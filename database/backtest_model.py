@@ -4,7 +4,10 @@ from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+
+# 🛠 Fix the import path
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
 from database.build_features import calculate_features
 from database.inference import load_latest_model, generate_predictions
 
