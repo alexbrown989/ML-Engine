@@ -1,48 +1,53 @@
-# database/backtest_model.py
-
-import os
 import sys
+import os
 import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
-from database.build_features import calculate_features
-from database.inference import load_latest_model, generate_predictions
+# 🔧 Fix for relative imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from database.build_features import calculate_features
+from database.inference import load_model_and_features, generate_predictions
+
+# === CONFIG === #
 TICKER = "AAPL"
 DAYS_BACK = 60
 
+# === BACKTEST FUNCTION === #
 def backtest():
-    print(f"\n🚀 Starting backtest for {TICKER}...")
-
+    print(f"Starting backtest for {TICKER}...")
     end_date = datetime.today()
     start_date = end_date - timedelta(days=DAYS_BACK)
 
     df = yf.download(TICKER, start=start_date, end=end_date)
 
     if df.empty:
-        print("❌ No data returned. Check ticker or date range.")
+        print("❌ Failed to fetch data. Exiting.")
         return
 
     df['entry_price'] = df['Open'].shift(-1)
 
-    # Flatten MultiIndex to simple columns
-    df.columns = ['_'.join(filter(None, map(str, col))).lower() if isinstance(col, tuple) else col.lower() for col in df.columns]
-    print("\n🧠 Columns before feature calc:", df.columns.tolist())
+    # Simulate realistic complex dataset structure
+    df.columns = pd.MultiIndex.from_product([['Price'], df.columns])
+    print("\n\U0001F9E0 Columns before processing:")
+    print(df.columns)
 
-    print("🔧 Calculating features...")
+    df.columns = ['_'.join(filter(None, map(str, col))).lower() for col in df.columns]
+
+    print("\n🔧 Calculating features...")
     df = calculate_features(df)
     df.dropna(inplace=True)
 
-    model, expected_features = load_latest_model()
+    model, expected_features = load_model_and_features()
     if model is None:
-        print("❌ No trained model found.")
+        print("❌ No model found. Train one first.")
         return
 
     for feature in expected_features:
         if feature not in df.columns:
-            print(f"⚠️ Missing feature: {feature}. Filling with NaN.")
+            print(f"⚠️ Missing expected feature: {feature}. Adding NaNs.")
             df[feature] = pd.NA
 
     df = df[expected_features].copy()
@@ -50,11 +55,12 @@ def backtest():
 
     print("\n🔮 Generating predictions...")
     preds = generate_predictions(model, df)
-    df = df.join(preds)
+    df = pd.concat([df, preds], axis=1)
 
-    print("\n📊 Top Predictions:")
-    print(df[['prediction', 'confidence']].sort_values(by='confidence', ascending=False).head(5))
+    print("\n📊 Backtest complete. Sample predictions:")
+    print(df[['prediction', 'confidence']].tail())
 
+# === ENTRY POINT === #
 if __name__ == "__main__":
     backtest()
 
