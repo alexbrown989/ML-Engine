@@ -17,7 +17,11 @@ def backtest():
     df['entry_price'] = df['Close']
 
     df = df.reset_index()
+    
     df.columns.name = None
+    print("\n🧠 Columns before MultiIndex:")
+    print(df.columns)
+
     df.columns = pd.MultiIndex.from_product([df.columns, [ticker]])
 
     df = calculate_features(df)
