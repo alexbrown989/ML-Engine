@@ -1,11 +1,10 @@
-# Final version of database/backtest_model.py
 import os
 import sys
 from datetime import datetime, timedelta
-import yfinance as yf
-import pandas as pd
-import numpy as np
 import traceback
+import numpy as np
+import pandas as pd
+import yfinance as yf
 
 # --- Configuration ---
 TICKER = "AAPL"
@@ -17,14 +16,17 @@ EXTERNAL_TICKERS = {
 DAYS_BACK = 365
 RSI_WINDOW = 14
 
-# --- Path Setup ---
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(script_dir, '..'))
-if project_root not in sys.path:
-    print(f"[INFO] Adding project root to path: {project_root}")
-    sys.path.append(project_root)
+# --- Setup Paths ---
+try:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, '..'))
+    if project_root not in sys.path:
+        print(f"[INFO] Adding project root to path: {project_root}")
+        sys.path.append(project_root)
+except Exception:
+    print("[WARN] Could not determine script directory.")
 
-# --- Import Custom Modules ---
+# --- Import Project Modules ---
 try:
     from build_features import calculate_features
     from inference import load_model_and_features, generate_predictions
@@ -33,7 +35,7 @@ except Exception as e:
     print(f"[ERROR] Import failed: {e}")
     sys.exit(1)
 
-# --- Helper ---
+# --- RSI Helper ---
 def compute_rsi(series, window=14):
     delta = series.diff()
     gain = delta.clip(lower=0).fillna(0)
@@ -44,83 +46,92 @@ def compute_rsi(series, window=14):
     rsi = 100 - (100 / (1 + rs))
     rsi[np.isinf(rs) & (avg_gain > 0)] = 100
     rsi[np.isinf(rs) & (avg_gain == 0)] = 50
-    return pd.Series(rsi, index=series.index, name='rsi')
+    rsi = pd.Series(rsi, index=series.index, name="rsi")
+    rsi.iloc[:window] = np.nan
+    return rsi
 
-# --- Main ---
+# --- Column Matching ---
+def find_column(df, patterns):
+    for col in df.columns:
+        for p in patterns:
+            if p.lower() in str(col).lower():
+                return col
+    return None
+
+# --- Backtest Main ---
 def backtest():
     print("\n==================== Starting Backtest ====================")
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=DAYS_BACK + 50)
-
     print(f"[INFO] Downloading {TICKER} data...")
-    df = yf.download(TICKER, start=start_date, end=end_date, progress=False, auto_adjust=True)
-    if df.empty:
-        print("[ERROR] No data returned for primary ticker.")
+    end = datetime.today()
+    start = end - timedelta(days=DAYS_BACK + 50)
+
+    try:
+        df = yf.download(TICKER, start=start, end=end, auto_adjust=True, progress=False)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [f"{a.lower()}_{b.lower()}" for a, b in df.columns]
+        else:
+            df.columns = [f"{col.lower()}_{TICKER.lower()}" for col in df.columns]
+        print(f"[DEBUG] Flattened columns: {df.columns.tolist()}")
+    except Exception as e:
+        print(f"[ERROR] Failed to download primary data: {e}")
         return
 
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [f"{col[0].lower()}_{col[1].lower()}" for col in df.columns]
-    else:
-        df.columns = [f"{TICKER.lower()}_{col.lower()}" for col in df.columns]
-
-    print(f"[DEBUG] Flattened columns: {df.columns.tolist()}")
-
-    # Entry price (next day open)
-    open_col = f"{TICKER.lower()}_open"
-    df['entry_price'] = df[open_col].shift(-1) if open_col in df else np.nan
-
-    # Download external tickers
-    for symbol, col_name in EXTERNAL_TICKERS.items():
-        print(f"[INFO] Downloading {symbol} as '{col_name}'...")
+    for symbol, name in EXTERNAL_TICKERS.items():
+        print(f"[INFO] Downloading {symbol} as '{name}'...")
         try:
-            ext = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=True)
-            close_col = [c for c in ext.columns if isinstance(c, tuple) and c[0] == 'Close']
-            series = ext[close_col[0]] if close_col else ext['Close']
-            df[col_name] = series
+            ext = yf.download(symbol, start=start, end=end, auto_adjust=True, progress=False)
+            if isinstance(ext.columns, pd.MultiIndex):
+                col = find_column(ext, ['close'])
+            else:
+                col = 'close'
+            df[name] = ext[col] if col in ext.columns else np.nan
         except Exception as e:
-            print(f"[WARN] Join failed for {symbol}: '{col_name}'. Setting {col_name} to NaN.")
-            df[col_name] = np.nan
+            print(f"[WARN] Failed to fetch {symbol}: {e}. Setting {name} to NaN.")
+            df[name] = np.nan
 
-    # RSI
-    close_col = f"close_{TICKER.lower()}"
-
-    if close_col in df:
-        df['rsi'] = compute_rsi(df[close_col], window=RSI_WINDOW)
+    close_col = find_column(df, [f"close_{TICKER.lower()}"])
+    if close_col:
+        df['rsi'] = compute_rsi(df[close_col], RSI_WINDOW)
     else:
-        print(f"[ERROR] {close_col} not found. Cannot compute RSI.")
+        print("[ERROR] aapl_close not found. Cannot compute RSI.")
         return
 
-    # Fill NaNs
-    df.ffill(inplace=True)
-    df.bfill(inplace=True)
+    open_col = find_column(df, [f"open_{TICKER.lower()}"])
+    if open_col:
+        df['entry_price'] = df[open_col].shift(-1)
+
+    df.fillna(method='ffill', inplace=True)
+    df.fillna(method='bfill', inplace=True)
 
     print("[INFO] Calculating features...")
-    df = calculate_features(df)
-
-    print("[INFO] Loading model...")
-    model, expected_features = load_model_and_features()
-    if model is None:
-        print("[ERROR] No model loaded.")
+    try:
+        df = calculate_features(df)
+    except Exception as e:
+        print(f"[ERROR] Feature calculation failed: {e}")
         return
 
-    for feat in expected_features:
-        if feat not in df:
-            df[feat] = np.nan
+    print("[INFO] Loading model...")
+    try:
+        model, expected_features = load_model_and_features()
+    except Exception as e:
+        print(f"[ERROR] Model load failed: {e}")
+        return
+
+    for col in expected_features:
+        if col not in df:
+            df[col] = np.nan
 
     df.dropna(subset=expected_features, inplace=True)
     if df.empty:
         print("[ERROR] DataFrame is empty after dropna.")
         return
 
-    df_predict = df[expected_features].copy()
-    preds = generate_predictions(model, df_predict)
-
+    preds = generate_predictions(model, df[expected_features])
     df['prediction'] = preds['prediction']
     df['confidence'] = preds.get('confidence', np.nan)
 
-    print("\n📊 Sample predictions:")
-    cols = [c for c in ['prediction', 'confidence', 'entry_price', close_col] if c in df.columns]
-    print(df[cols].tail())
+    print("\n📊 Final Predictions:")
+    print(df[['prediction', 'confidence']].tail())
     print("\n✅ Backtest complete.")
 
 if __name__ == "__main__":
