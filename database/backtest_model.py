@@ -116,10 +116,17 @@ def backtest():
         return
 
     # --- Patch for one-hot regime ---
-    if 'regime' in expected:
-        expected.remove('regime')
-        regime_oh = [col for col in df.columns if col.startswith('regime_')]
-        expected.extend(regime_oh)
+   # Back-convert one-hot to original 'regime' label for model compatibility
+regime_cols = [c for c in df.columns if c.startswith('regime_')]
+if 'regime' in expected_features and regime_cols:
+    print(f"🔁 Converting one-hot back to 'regime' for model compatibility.")
+    def decode_regime(row):
+        for col in regime_cols:
+            if row.get(col) == 1:
+                return col.replace("regime_", "")
+        return 'calm'  # fallback
+    df['regime'] = df.apply(decode_regime, axis=1)
+
 
     for col in expected:
         if col not in df:
