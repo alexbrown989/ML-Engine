@@ -22,7 +22,7 @@ TICKER = "AAPL"
 EXTERNAL_TICKERS = {
     "^VIX": "vix",
     "^VVIX": "vvix",
-    "^SKEW": "skew"
+    "^SKEW": "skew",
 }
 DAYS_BACK = 60
 
@@ -32,43 +32,34 @@ def backtest():
     start_date = end_date - timedelta(days=DAYS_BACK + 15)
 
     try:
-        df = yf.download(TICKER, start=start_date, end=end_date, progress=False, group_by='ticker', auto_adjust=True)
+        df = yf.download(TICKER, start=start_date, end=end_date, progress=False, auto_adjust=True)
     except Exception as e:
-        print(f"❌ Download error for {TICKER}: {e}")
+        print(f"❌ Error downloading primary ticker: {e}")
         return
 
     if df.empty:
-        print(f"❌ No data for {TICKER}.")
+        print("❌ No data returned for primary ticker.")
         return
 
     print("🔧 Flattening primary ticker columns...")
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [f"{col[0].lower().replace('^','')}_{col[1].lower()}" for col in df.columns]
-    else:
-        df.columns = [f"{TICKER.lower()}_{col.lower()}" if not col.lower().startswith(TICKER.lower()) else col.lower() for col in df.columns]
-
+    df.columns = [f"{TICKER.lower()}_{col.lower()}" for col in df.columns]
     print(f"🧠 Columns after flattening {TICKER}: {df.columns.tolist()}")
 
-    for symbol, name in EXTERNAL_TICKERS.items():
-        print(f"\nDownloading {symbol} as '{name}'...")
+    for ext_ticker, alias in EXTERNAL_TICKERS.items():
+        print(f"\nDownloading {ext_ticker} as '{alias}'...")
         try:
-            ext = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=True)
-            close_series = ext['Close'] if 'Close' in ext else ext.iloc[:, 0]
-            close_series.name = name
+            ext_data = yf.download(ext_ticker, start=start_date, end=end_date, progress=False, auto_adjust=True)
+            if isinstance(ext_data.columns, pd.MultiIndex):
+                close_series = ext_data.iloc[:, 0]
+            else:
+                close_series = ext_data['Close']
+            close_series.name = alias
             df = df.join(close_series, how='left')
-            if df[name].isnull().all():
-                print(f"⚠️ {name} data is all NaN.")
-        except Exception as e:
-            print(f"⚠️ Join failed for {symbol}: {e}. Setting {name} to NaN.")
-            df[name] = np.nan
+        except Exception:
+            print(f"⚠️ Join failed for {ext_ticker}: '{alias}'. Setting {alias} to NaN.")
+            df[alias] = np.nan
 
-    open_col = f"{TICKER.lower()}_open"
-    df['entry_price'] = df[open_col].shift(-1) if open_col in df.columns else np.nan
-
-    cols_to_fill = list(EXTERNAL_TICKERS.values()) + ['entry_price'] + [col for col in df.columns if col.startswith(TICKER.lower())]
-    for col in cols_to_fill:
-        if col in df.columns:
-            df[col] = df[col].ffill().bfill()
+    df['entry_price'] = df[f"{TICKER.lower()}_open"].shift(-1)
 
     print("\n🔧 Calculating features...")
     try:
@@ -77,44 +68,37 @@ def backtest():
         print(f"❌ KeyError during features: {e}")
         return
     except Exception as e:
-        print(f"❌ Unknown feature error: {e}")
+        print(f"❌ Unexpected error in feature calculation: {e}")
         return
 
     df.dropna(inplace=True)
     if df.empty:
-        print("❌ All rows dropped after feature calc.")
+        print("❌ DataFrame empty after feature processing.")
         return
 
     try:
-        model, features = load_model_and_features()
+        model, expected_features = load_model_and_features()
     except Exception as e:
         print(f"❌ Model load failed: {e}")
         return
 
-    for f in features:
-        if f not in df:
-            print(f"⚠️ Missing: {f}, filling with 0")
-            df[f] = 0
+    for col in expected_features:
+        if col not in df.columns:
+            df[col] = 0
 
-    df_pred = df[features].copy().fillna(0)
+    df = df[expected_features].fillna(0)
 
     print("\n🔮 Generating predictions...")
     try:
-        preds = generate_predictions(model, df_pred)
+        preds = generate_predictions(model, df)
+        df['prediction'] = preds['prediction']
+        df['confidence'] = preds['confidence']
     except Exception as e:
-        print(f"❌ Predict error: {e}")
+        print(f"❌ Prediction failed: {e}")
         return
 
-    df['prediction'] = preds['prediction']
-    df['confidence'] = preds['confidence']
-
-    show = ['prediction', 'confidence']
-    close_col = f"{TICKER.lower()}_close"
-    if close_col in df.columns:
-        show.insert(0, close_col)
-
     print("\n📊 Sample predictions:")
-    print(df[show].tail())
+    print(df[['prediction', 'confidence']].tail())
     print("\n✅ Backtest complete.")
 
 if __name__ == "__main__":
