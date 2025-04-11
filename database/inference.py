@@ -1,57 +1,40 @@
-import sqlite3
-import pandas as pd
+# database/inference.py
+
+import os
 import pickle
-from datetime import datetime
+import pandas as pd
+from build_features import calculate_features
 
-def load_model(path="model_xgb.pkl"):
-    with open(path, "rb") as f:
-        return pickle.load(f)
+MODEL_DIR = "models"
 
-def get_unlabeled_signals():
-    conn = sqlite3.connect("signals.db")
-    query = """
-        SELECT id, vix, vvix, skew, rsi, regime, checklist_score
-        FROM signals
-        WHERE id NOT IN (SELECT signal_id FROM predictions)
-    """
-    df = pd.read_sql_query(query, conn)
-    conn.close()
+def load_latest_model():
+    """Load the latest saved XGBoost model."""
+    try:
+        model_files = sorted(
+            [f for f in os.listdir(MODEL_DIR) if f.endswith(".pkl")],
+            reverse=True
+        )
+        if not model_files:
+            print("❌ No model files found.")
+            return None
+
+        latest_model_path = os.path.join(MODEL_DIR, model_files[0])
+        with open(latest_model_path, "rb") as f:
+            model = pickle.load(f)
+        print(f"✅ Loaded model: {latest_model_path}")
+        return model
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        return None
+
+
+def generate_predictions(model, df):
+    """Run inference on a DataFrame using the provided model."""
+    features = df.drop(columns=["outcome_class"], errors="ignore")
+    preds = model.predict(features)
+    proba = model.predict_proba(features)
+
+    df['prediction'] = preds
+    df['confidence'] = proba.max(axis=1)
     return df
-
-def build_features(df_raw):
-    df = df_raw.copy()
-    df['vvs_adj'] = (df['vix'] + df['vvix']) / df['skew']
-    df['vvs_roc_5d'] = None  # placeholder
-    df['chop_flag'] = 0  # fallback default
-
-    # One-hot encode 'regime' column
-    df['regime'] = df['regime'].astype(str)
-    df = pd.get_dummies(df, columns=['regime'], drop_first=True)
-
-    # Handle missing values and other columns as necessary
-    for regime in ['regime_calm', 'regime_panic', 'regime_transition']:
-        if regime not in df.columns:
-            df[regime] = np.nan
-
-    df.set_index("id", inplace=True)
-    return df
-
-def run_inference():
-    print(f"🚀 Starting inference at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    df_raw = get_unlabeled_signals()
-    print(f"\n📥 Fetched {len(df_raw)} new signals to score.")
-    if df_raw.empty:
-        print("❌ No new signals to score. Exiting.")
-        return
-
-    print(f"🔍 Preparing features for {len(df_raw)} signals...")
-
-    features = build_features(df_raw)
-    print("🧠 Feature DataFrame preview:")
-    print(features.head())
-
-    model = load_model()
-    expected_cols = model.get_booster().feature_names
-    print("🔎 Model expects features:",)
 
