@@ -54,14 +54,27 @@ except Exception as e:
 def find_column(df: pd.DataFrame, possible_patterns: list) -> str | None:
     """
     Tries to find a column in the DataFrame matching a list of possible patterns.
-    Case-insensitive search. Returns the first match found or None.
+    Case-insensitive search. Handles string and tuple column names. Returns the first match found or None.
     """
-    df_columns_lower = {col.lower(): col for col in df.columns}
+    df_columns_processed = {}
+    for col in df.columns:
+        if isinstance(col, tuple):
+            # If tuple, use the first element (usually the field name like 'Close')
+            # Ensure it's a string before lowercasing
+            col_name = str(col[0]).lower() if len(col) > 0 else ""
+            df_columns_processed[col_name] = col # Store original tuple column name
+        elif isinstance(col, str):
+            # If string, use it directly
+            df_columns_processed[col.lower()] = col # Store original string column name
+        # else: ignore other types if necessary
+
     for pattern in possible_patterns:
-        if pattern.lower() in df_columns_lower:
-            found_col = df_columns_lower[pattern.lower()]
+        pattern_lower = pattern.lower()
+        if pattern_lower in df_columns_processed:
+            found_col = df_columns_processed[pattern_lower]
             print(f"[DEBUG] Found column matching pattern '{pattern}': '{found_col}'")
-            return found_col
+            return found_col # Return the original column name (string or tuple)
+
     print(f"[WARN] Could not find any column matching patterns: {possible_patterns}")
     return None
 
@@ -70,28 +83,35 @@ def compute_rsi(series: pd.Series, window: int = 14) -> pd.Series:
     if not isinstance(series, pd.Series):
         print("[ERROR] Input to compute_rsi must be a pandas Series.")
         return pd.Series(index=series.index, dtype=np.float64) # Return empty series of correct type
+    if series.empty:
+         print("[WARN] Input series for compute_rsi is empty.")
+         return pd.Series(index=series.index, dtype=np.float64)
 
     delta = series.diff()
     gain = delta.clip(lower=0).fillna(0) # Fill NaN from diff with 0
     loss = -delta.clip(upper=0).fillna(0) # Fill NaN from diff with 0
 
-    # Use rolling mean for EMA approximation as in original code
-    # For true EMA, use .ewm(span=window, adjust=False).mean()
     avg_gain = gain.rolling(window=window, min_periods=window).mean()
     avg_loss = loss.rolling(window=window, min_periods=window).mean()
 
     # Avoid division by zero
-    rs = np.where(avg_loss == 0, np.inf, avg_gain / avg_loss) # If loss is 0, RS is infinite
+    # Use .values to ensure calculations happen at numpy level if needed, but keep series for index alignment
+    rs_values = np.where(avg_loss.values == 0, np.inf, avg_gain.values / avg_loss.values)
 
-    rsi = 100 - (100 / (1 + rs))
+    rsi_values = 100 - (100 / (1 + rs_values))
 
     # Handle infinite RS (where loss was 0, gain > 0) -> RSI should be 100
-    rsi[np.isinf(rs) & (avg_gain > 0)] = 100
+    rsi_values[np.isinf(rs_values) & (avg_gain.values > 0)] = 100
     # Handle case where both avg_gain and avg_loss are 0 -> RSI is undefined (often set to 50 or NaN)
-    rsi[np.isinf(rs) & (avg_gain == 0)] = 50 # Or np.nan if preferred
+    rsi_values[np.isinf(rs_values) & (avg_gain.values == 0)] = 50 # Or np.nan if preferred
+
+    # *** FIX: Convert numpy array back to Series with original index ***
+    rsi = pd.Series(rsi_values, index=series.index, name='rsi')
 
     # Ensure the first 'window' periods are NaN as they don't have enough data
-    rsi.iloc[:window] = np.nan
+    # Note: rolling mean already induces NaNs, but this ensures alignment if calculation changes
+    if len(rsi) >= window:
+         rsi.iloc[:window-1] = np.nan # diff introduces 1 NaN, rolling introduces window-1 more
 
     return rsi
 
